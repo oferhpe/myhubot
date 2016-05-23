@@ -1,14 +1,11 @@
 Opsa = require('opsa-general-api.coffee')
 Utils = require('opsa-api-utils.coffee')
-
 AnomaliesAPI = (xsrfToken, jSessionId) ->
   OpsaAPI.call this, xsrfToken, jSessionId
   return
-
 OpsaAPI = Opsa.OpsaAPI
 AnomaliesAPI.prototype = Object.create(OpsaAPI.prototype)
 AnomaliesAPI::constructor = AnomaliesAPI
-
 AnomaliesAPI::invoker = (callback) ->
   ONE_HOUR = 60 * 60 * 1000;
   now = new Date().getTime()
@@ -24,39 +21,9 @@ AnomaliesAPI::invoker = (callback) ->
   )
   return
 
-parseOpsaAnomaliesData = (body, requestedHost) ->
-  colNames = new Array()
-  collections = JSON.parse(body)
-  output = ""
-  for collectionId of collections
-    for resultObjectIdx of collections[collectionId]
-      obj = collections[collectionId]
-      for tableIdx of obj[resultObjectIdx].processedResult
-        table = obj[resultObjectIdx].processedResult[tableIdx]
-        for columnIdx of table.columnNames
-          colNames.push table.columnNames[columnIdx].columnTitle
-        for rowIdx of table.tableDataWithDrill
-          row = table.tableDataWithDrill[rowIdx]
-          rowStr = ""
-          display = false;
-          displayed = 0
-          for colIdx of row
-            colName = colNames[colIdx]
-            colValue = row[colIdx].displayValue
-            if display == false && colName == "Entity" && (colValue == requestedHost || requestedHost == "*")
-              display = true
-              displayed++
-            rowStr += "*" + colName + ":* " + colValue + "\n"
-          if (display)
-            output += rowStr
-  if displayed == 0
-    replyText = 'No data found for host: ' + requestedHost + "\n"
-  else
-    replyText = 'Displaying Anomalies For Host: ' + requestedHost + "\n" + output
-  return replyText
 
 module.exports = {
   AnomaliesAPI,
-  parseOpsaAnomaliesData
+#  parseOpsaAnomaliesData
 }
 

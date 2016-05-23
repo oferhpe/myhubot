@@ -21,8 +21,8 @@
       return;
     }
     opsaUri = Utils.getOpsaUri();
-    seqUrl = Utils.getOpsaUri() + "/j_security_check";
-    xsrfUrl = Utils.getOpsaUri() + "/rest/getXSRFToken";
+      seqUrl = opsaUri + "/j_security_check";
+      xsrfUrl = opsaUri + "/rest/getXSRFToken";
     loginForm = {
       j_username: Properties.user,
       j_password: Properties.password

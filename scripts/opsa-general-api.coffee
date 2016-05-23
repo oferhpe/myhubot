@@ -12,10 +12,9 @@ OpsaAPI::invoke = (callback)->
 OpsaAPI::login = (userRes, loginCallback) ->
   if !Utils.okToContinue()
     return
-  # '16.60.188.94:8080/opsa'
   opsaUri = Utils.getOpsaUri();
-  seqUrl = Utils.getOpsaUri() + "/j_security_check"
-  xsrfUrl = Utils.getOpsaUri() + "/rest/getXSRFToken"
+  seqUrl = opsaUri + "/j_security_check"
+  xsrfUrl = opsaUri + "/rest/getXSRFToken"
   loginForm =
     j_username: Properties.user
     j_password: Properties.password

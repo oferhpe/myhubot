@@ -15,7 +15,6 @@ module.exports = (robot) ->
         res.reply replyText
         Utils.ongoing = false
         return
-
       anomaliesAPI.invoke apiCallback
     Opsa.OpsaAPI::login(res, loginCallback)
 

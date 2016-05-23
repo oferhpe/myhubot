@@ -1,11 +1,14 @@
 Opsa = require('opsa-general-api.coffee')
 Utils = require('opsa-api-utils.coffee')
+
 AnomaliesAPI = (xsrfToken, jSessionId) ->
   OpsaAPI.call this, xsrfToken, jSessionId
   return
+
 OpsaAPI = Opsa.OpsaAPI
 AnomaliesAPI.prototype = Object.create(OpsaAPI.prototype)
 AnomaliesAPI::constructor = AnomaliesAPI
+
 AnomaliesAPI::invoker = (callback) ->
   ONE_HOUR = 60 * 60 * 1000;
   now = new Date().getTime()
@@ -20,6 +23,7 @@ AnomaliesAPI::invoker = (callback) ->
     callback(anomResponse.body)
   )
   return
+
 parseOpsaAnomaliesData = (body, requestedHost) ->
   colNames = new Array()
   collections = JSON.parse(body)
@@ -50,6 +54,7 @@ parseOpsaAnomaliesData = (body, requestedHost) ->
   else
     replyText = 'Displaying Anomalies For Host: ' + requestedHost + "\n" + output
   return replyText
+
 module.exports = {
   AnomaliesAPI,
   parseOpsaAnomaliesData

@@ -126,18 +126,18 @@ getMetricsDescriptorsUrl = (parsedInfo) ->
   now = new Date().getTime()
   endTime = parsedInfo.inactiveTime ? now
   metricsUri = "/rest/getQueryDescriptors?endTime=" + endTime + "&q=AnomalyInstance(" + parsedInfo.anomalyId + ")&startTime=" + parsedInfo.triggerTime
-  return getOpsaUri() + encodeURI(metricsUri)
+  return getOpsaUri() + metricsUri
 getMetricsResultsUrl = (parsedInfo, descResponse) ->
+  now = new Date().getTime()
+  endTime = parsedInfo.inactiveTime ? now
   descArray = JSON.parse(descResponse.body).descriptors
   for desc of descArray
     if (descArray[desc].label.startsWith("Breaches for Anomaly"))
-      return getOpsaUri() + encodeURI("/rest/getQueryResult?aqlQuery=" + descArray[desc].aql)
-parseOpsaAnomaliesData = (body, requestedHost) ->
-  propNames = new Array()
+      return getOpsaUri() + "/rest/getQueryResult?aqlQuery=" + encodeURIComponent(descArray[desc].aql) + "&endTime=" + endTime + '&granularity=0&pageIndex=1&paramsMap={"$starttime":"' + new Date(parsedInfo.triggerTime) + '","$limit":"1000","$interval":7200,"$offset":0,"$N":5,"$pctile":10,"$timeoffset":0,"$starttimeoffset":0,"$endtimeoffset":0,"$timeout":0,"$drill_dest":"","$drill_label":"","$drill_value":"","$drill_type":"","$problemtime":' + parsedInfo.triggerTime + ',"$aggregate_playback_flag":null}&queryType=anomalyInstance&startTime=' + parsedInfo.triggerTime + '&timeZoneOffset=-180&timeout=10'
+extractAnomalies = (body, requestedHost) ->
+  anomalies = new Array()
   collections = JSON.parse(body)
-  __ret = {}
-  __ret.anomalyPropertiesText = ""
-  extractProps = (props, propName, propVal)->
+  extractInfoFromProps = (props, propName, propVal)->
     switch propName
       when "Active time"
         props.triggerTime = propVal
@@ -167,39 +167,46 @@ parseOpsaAnomaliesData = (body, requestedHost) ->
       propName,
       propVal
     }
-  for collectionId of collections
-    for resultObjectIdx of collections[collectionId]
-      obj = collections[collectionId]
-      for tableIdx of obj[resultObjectIdx].processedResult
-        table = obj[resultObjectIdx].processedResult[tableIdx]
+  extractSingleAnomalyData = (anomalyRawData) ->
+    anomalyPropertiesAsText = ""
+    display = false;
+    extractedInfo = {}
+    extractedInfo.anomalyPropertiesText = ""
+    for colIdx of anomalyRawData
+      propName = propNames[colIdx]
+      propVal = anomalyRawData[colIdx].displayValue
+      extractedInfo = extractInfoFromProps(extractedInfo, propName, propVal)
+      modifiedProps = modifyOutput(propName, propVal)
+      if (!modifiedProps)
+        continue
+      propName = modifiedProps.propName
+      propVal = modifiedProps.propVal
+      if propName == "Status" && propVal != "active"
+        return null
+      if display == false && propName == "Entity" && (propVal == requestedHost || requestedHost == "*")
+        display = true
+        hostName = propVal
+      anomalyPropertiesAsText += "*" + propName + ":* " + propVal + "\n"
+    if (!display)
+      return null
+    extractedInfo.anomalyPropsText = "\n*Anomalies for host: *`" + hostName + "`\n" + anomalyPropertiesAsText
+    return extractedInfo
+  for collectionGroupId of collections
+    collectionGroup = collections[collectionGroupId]
+    for collectionId of collectionGroup
+      collection = collectionGroup[collectionId].processedResult
+      for tableIdx of collection
+        table = collection[tableIdx]
+        propNames = new Array()
         for columnIdx of table.columnNames
           propNames.push table.columnNames[columnIdx].columnTitle
-        for rowIdx of table.tableDataWithDrill
-          row = table.tableDataWithDrill[rowIdx]
-          rowStr = ""
-          display = false;
-          displayed = 0
-          if row["Status"] != "Active"
-            continue
-          for colIdx of row
-            propName = propNames[colIdx]
-            propVal = row[colIdx].displayValue
-            __ret = extractProps(__ret, propName, propVal)
-            modifiedProps = modifyOutput(propName, propVal)
-            if (!modifiedProps)
-              continue
-            propName = modifiedProps.colName
-            propVal = modifiedProps.colValue
-            if display == false && propName == "Entity" && (propVal == requestedHost || requestedHost == "*")
-              display = true
-              displayed++
-              hostName = propVal
-            rowStr += "*" + propName + ":* " + propVal + "\n"
-          if (display)
-            __ret.anomalyPropertiesText += "\n*Anomalies for host: *`" + hostName + "`\n" + rowStr
-  if displayed == 0
-    __ret.anomalyPropertiesText = 'No data found for host: ' + requestedHost + "\n"
-  return __ret
+        tableRows = table.tableDataWithDrill
+        for rowIdx of tableRows
+          row = tableRows[rowIdx]
+          singleAnomaly = extractSingleAnomalyData(row)
+          if (singleAnomaly)
+            anomalies.push(singleAnomaly)
+  return anomalies
 ########################################################
 #                   Controllers                        #
 ########################################################
@@ -213,14 +220,17 @@ module.exports = (robot) ->
       anomaliesAPI.invoke().then ((anomResponse) ->
         body = anomResponse.body
         requestedHost = getRequestedHost(userRes)
-        parsedInfo = parseOpsaAnomaliesData(body, requestedHost)
-        requestp(getMetricsDescriptorsUrl(parsedInfo), anomaliesAPI.sessionJar, 'GET', anomaliesAPI.sessionHeaders).then ((descResponse) ->
-          requestp(getMetricsResultsUrl(parsedInfo, descResponse), anomaliesAPI.sessionJar, 'POST', anomaliesAPI.sessionHeaders).then ((resultResponse) ->
-            res.reply parsedInfo.anomalyPropertiesText
-            ongoing = false
+        extractedAnomalies = extractAnomalies(body, requestedHost)
+        if (extractedAnomalies.length == 0)
+          return userRes.reply 'No data found for host: ' + requestedHost + "\n"
+        for anomalyData in extractedAnomalies
+          requestp(getMetricsDescriptorsUrl(anomalyData), anomaliesAPI.sessionJar, 'GET', anomaliesAPI.sessionHeaders).then ((descResponse) ->
+            metricResultsHeaders = anomaliesAPI.sessionHeaders
+            requestp(getMetricsResultsUrl(anomalyData, descResponse), anomaliesAPI.sessionJar, 'POST', metricResultsHeaders).then ((resultResponse) ->
+              ongoing = false
+            )
           )
-        )
-        parsedInfo.metrics = getAnomaliesMetrics(parsedInfo, getMetricsCallback)
+        #          parsedInfo.metrics = getAnomaliesMetrics(parsedInfo, getMetricsCallback)
         return
       )
     )

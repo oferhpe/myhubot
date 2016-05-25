@@ -227,10 +227,18 @@ module.exports = (robot) ->
           requestp(getMetricsDescriptorsUrl(anomalyData), anomaliesAPI.sessionJar, 'GET', anomaliesAPI.sessionHeaders).then ((descResponse) ->
             metricResultsHeaders = anomaliesAPI.sessionHeaders
             requestp(getMetricsResultsUrl(anomalyData, descResponse), anomaliesAPI.sessionJar, 'POST', metricResultsHeaders).then ((resultResponse) ->
-              ongoing = false
+              resJson = JSON.parse(resultResponse.body)
+              labels = ""
+              for prop,val of resJson
+                if prop != "anomaly_result"
+                  for childProp in val
+                    for label in childProp.metricLabels
+                      labels += label
+              anomalyData.anomalyPropsText += "*Breached Metrics:* " + labels
+              userRes.reply anomalyData.anomalyPropsText
             )
           )
-        #          parsedInfo.metrics = getAnomaliesMetrics(parsedInfo, getMetricsCallback)
+        ongoing = false
         return
       )
     )

@@ -299,10 +299,28 @@
               var metricResultsHeaders;
               metricResultsHeaders = anomaliesAPI.sessionHeaders;
               return requestp(getMetricsResultsUrl(anomalyData, descResponse), anomaliesAPI.sessionJar, 'POST', metricResultsHeaders).then((function (resultResponse) {
-                return ongoing = false;
+                var childProp, j, k, label, labels, len1, len2, prop, ref, resJson, val;
+                resJson = JSON.parse(resultResponse.body);
+                labels = "";
+                for (prop in resJson) {
+                  val = resJson[prop];
+                  if (prop !== "anomaly_result") {
+                    for (j = 0, len1 = val.length; j < len1; j++) {
+                      childProp = val[j];
+                      ref = childProp.metricLabels;
+                      for (k = 0, len2 = ref.length; k < len2; k++) {
+                        label = ref[k];
+                        labels += label;
+                      }
+                    }
+                  }
+                }
+                anomalyData.anomalyPropsText += "*Breached Metrics:* " + labels;
+                return userRes.reply(anomalyData.anomalyPropsText);
               }));
             }));
           }
+          ongoing = false;
         }));
       }));
     });

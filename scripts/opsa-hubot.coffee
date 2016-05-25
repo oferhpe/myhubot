@@ -20,13 +20,13 @@ OpsaAPI::login = (userRes, loginCallback) ->
   loginForm =
     j_username: Properties.user
     j_password: Properties.password
-  @sessionData = {}
-  localSessionData = @sessionData
+  @sData = {}
+  localSessionData = @sData
   requestp(opsaUri).then ((res) ->
     jar4SecurityRequest = createJar(res, seqUrl, 1)
     requestp(seqUrl, jar4SecurityRequest, 'POST', {}, loginForm).then ((res) ->
       requestp(opsaUri, jar4SecurityRequest).then ((apiSessionResponse) ->
-        localSessionData.sessionId = getSessionId(apiSessionResponse, 0)
+        localSessionData.sId = getSessionId(apiSessionResponse, 0)
         jar4XSRFRequest = createJar(apiSessionResponse, xsrfUrl)
         requestp(xsrfUrl, jar4XSRFRequest)
       )
@@ -102,39 +102,47 @@ okToContinue = ->
     return true
 getRequestedHost = (res) ->
   res.match[1].replace(/^https?\:\/\//i, "");
+getLabels = (resultResponse) ->
+  resJson = JSON.parse(resultResponse.body)
+  labels = ""
+  for prop,val of resJson
+    if prop != "anomaly_result"
+      for childProp in val
+        for label in childProp.metricLabels
+          labels += label
 ########################################################
 #                   Anomalies API                      #
 ########################################################
-AnomaliesAPI = (xsrfToken, jSessionId) ->
+AnomAPI = (xsrfToken, jSessionId) ->
   OpsaAPI.call this, xsrfToken, jSessionId
   return
 OpsaAPI = OpsaAPI
-AnomaliesAPI.prototype = Object.create(OpsaAPI.prototype)
-AnomaliesAPI::constructor = AnomaliesAPI
-AnomaliesAPI::invoke = () ->
+AnomAPI.prototype = Object.create(OpsaAPI.prototype)
+AnomAPI::constructor = AnomAPI
+AnomAPI::invoke = () ->
   ONE_HOUR = 60 * 60 * 1000;
   now = new Date().getTime()
   oneHourAgo = now - ONE_HOUR
   createAnomaliesApiUri = (startTime, endTime)->
     "/rest/getQueryResult?aqlQuery=%5Banomalies%5BattributeQuery(%7Bopsa_collection_anomalies%7D,+%7B%7D,+%7Bi.anomaly_id%7D)%5D()%5D+&endTime=" + endTime + "&granularity=0&pageIndex=1&paramsMap=%7B%22$drill_dest%22:%22AnomalyInstance%22,%22$drill_label%22:%22opsa_collection_anomalies_description%22,%22$drill_value%22:%22opsa_collection_anomalies_anomaly_id%22,%22$limit%22:%22500%22,%22$interval%22:300,%22$offset%22:0,%22$N%22:5,%22$pctile%22:10,%22$timeoffset%22:0,%22$starttimeoffset%22:0,%22$endtimeoffset%22:0,%22$timeout%22:0,%22$drill_type%22:%22%22,%22$problemtime%22:1463653196351,%22$aggregate_playback_flag%22:null%7D&queryType=generic&startTime=" + startTime + "&timeZoneOffset=-180&timeout=10&visualType=table"
   anomUrl = getOpsaUri() + createAnomaliesApiUri(oneHourAgo, now)
-  @sessionJar = generateJar(@jSessionId, anomUrl)
-  @sessionHeaders =
+  @sJar = generateJar(@jSessionId, anomUrl)
+  @sHeaders =
     'XSRFToken': @xsrfToken
-  requestp(anomUrl, @sessionJar, 'POST', @sessionHeaders)
-getMetricsDescriptorsUrl = (parsedInfo) ->
+  requestp(anomUrl, @sJar, 'POST', @sHeaders)
+getMetricsDescUrl = (parsedInfo) ->
   now = new Date().getTime()
   endTime = parsedInfo.inactiveTime ? now
   metricsUri = "/rest/getQueryDescriptors?endTime=" + endTime + "&q=AnomalyInstance(" + parsedInfo.anomalyId + ")&startTime=" + parsedInfo.triggerTime
   return getOpsaUri() + metricsUri
-getMetricsResultsUrl = (parsedInfo, descResponse) ->
+getMetricsUrl = (parsedInfo, descResponse) ->
   now = new Date().getTime()
   endTime = parsedInfo.inactiveTime ? now
   descArray = JSON.parse(descResponse.body).descriptors
   for desc of descArray
     if (descArray[desc].label.startsWith("Breaches for Anomaly"))
       return getOpsaUri() + "/rest/getQueryResult?aqlQuery=" + encodeURIComponent(descArray[desc].aql) + "&endTime=" + endTime + '&granularity=0&pageIndex=1&paramsMap={"$starttime":"' + new Date(parsedInfo.triggerTime) + '","$limit":"1000","$interval":7200,"$offset":0,"$N":5,"$pctile":10,"$timeoffset":0,"$starttimeoffset":0,"$endtimeoffset":0,"$timeout":0,"$drill_dest":"","$drill_label":"","$drill_value":"","$drill_type":"","$problemtime":' + parsedInfo.triggerTime + ',"$aggregate_playback_flag":null}&queryType=anomalyInstance&startTime=' + parsedInfo.triggerTime + '&timeZoneOffset=-180&timeout=10'
-extractAnomalies = (body, requestedHost) ->
+getAnoms = (body, requestedHost) ->
   anomalies = new Array()
   collections = JSON.parse(body)
   extractInfoFromProps = (props, propName, propVal)->
@@ -189,7 +197,7 @@ extractAnomalies = (body, requestedHost) ->
       anomalyPropertiesAsText += "*" + propName + ":* " + propVal + "\n"
     if (!display)
       return null
-    extractedInfo.anomalyPropsText = "\n*Anomalies for host: *`" + hostName + "`\n" + anomalyPropertiesAsText
+    extractedInfo.text = "\n*Anomalies for host: *`" + hostName + "`\n" + anomalyPropertiesAsText
     return extractedInfo
   for collectionGroupId of collections
     collectionGroup = collections[collectionGroupId]
@@ -211,31 +219,23 @@ extractAnomalies = (body, requestedHost) ->
 #                   Controllers                        #
 ########################################################
 
-
 module.exports = (robot) ->
   robot.respond /display anomalies for host:?:\s*(.*)/i, (userRes) ->
+    rHost = getRequestedHost(userRes)
     opsaAPI = new OpsaAPI()
     opsaAPI.login(userRes).then ((res) ->
-      anomaliesAPI = new AnomaliesAPI(res.body, opsaAPI.sessionData.sessionId)
-      anomaliesAPI.invoke().then ((anomResponse) ->
-        body = anomResponse.body
-        requestedHost = getRequestedHost(userRes)
-        extractedAnomalies = extractAnomalies(body, requestedHost)
-        if (extractedAnomalies.length == 0)
-          return userRes.reply 'No data found for host: ' + requestedHost + "\n"
-        for anomalyData in extractedAnomalies
-          requestp(getMetricsDescriptorsUrl(anomalyData), anomaliesAPI.sessionJar, 'GET', anomaliesAPI.sessionHeaders).then ((descResponse) ->
-            metricResultsHeaders = anomaliesAPI.sessionHeaders
-            requestp(getMetricsResultsUrl(anomalyData, descResponse), anomaliesAPI.sessionJar, 'POST', metricResultsHeaders).then ((resultResponse) ->
-              resJson = JSON.parse(resultResponse.body)
-              labels = ""
-              for prop,val of resJson
-                if prop != "anomaly_result"
-                  for childProp in val
-                    for label in childProp.metricLabels
-                      labels += label
-              anomalyData.anomalyPropsText += "*Breached Metrics:* " + labels
-              userRes.reply anomalyData.anomalyPropsText
+      anomAPI = new AnomAPI(res.body, opsaAPI.sData.sId)
+      anomAPI.invoke().then ((anomRes) ->
+        anoms = getAnoms(anomRes.body, rHost)
+        if (anoms.length == 0)
+          return userRes.reply 'No data found for host: ' + rHost + "\n"
+        for anom in anoms
+          mDescUrl = getMetricsDescUrl(anom)
+          requestp(mDescUrl, anomAPI.sJar, 'GET', anomAPI.sHeaders).then ((descRes) ->
+            mUrl = getMetricsUrl(anom, descRes)
+            requestp(mUrl, anomAPI.sJar, 'POST', anomAPI.sHeaders).then ((resultRes) ->
+              anom.text += "*Breached Metrics:* " + getLabels(resultRes)
+              userRes.reply anom.text
             )
           )
         ongoing = false

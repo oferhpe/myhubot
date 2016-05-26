@@ -243,12 +243,16 @@ handleAnomRes = (anomHandler, anomRes, rHost, userRes) ->
   anoms = anomHandler.parseRes(anomRes.body, rHost)
   if (anoms.length == 0)
     userRes.reply 'No data found for host: ' + rHost + "\n"
-  for anom in anoms
-    anomHandler.getMetrics(anom).then ((resultRes) ->
-      anom.text += "*Breached Metrics:* " + getLabels(resultRes)
-      userRes.reply anom.text
+  getMetricsAndReply = (anom)->
+    clonedAnom = JSON.parse(JSON.stringify(anom))
+    return () ->
+      anomHandler.getMetrics(clonedAnom).then ((resultRes) ->
+        clonedAnom.text += "*Breached Metrics:* " + getLabels(resultRes)
+        userRes.reply clonedAnom.text
     )
-    
+  for anom in anoms
+    (getMetricsAndReply(anom))()
+
 module.exports = (robot) ->
   robot.respond /display anomalies for host:?:\s*(.*)/i, (userRes) ->
     rHost = getRequestedHost(userRes)

@@ -174,6 +174,7 @@
   AnomHandler = function (xsrfToken, jSessionId) {
     OpsaSession.call(this, xsrfToken, jSessionId);
   };
+
   AnomHandler.prototype.constructor = AnomHandler;
   AnomHandler.prototype.invokeAPI = function () {
     var anomUrl, createAnomaliesApiUri, oneHourAgo;
@@ -326,18 +327,25 @@
     }));
   };
   handleAnomRes = function (anomHandler, anomRes, rHost, userRes) {
-    var anom, anoms, i, len, results;
+    var anom, anoms, getMetricsAndReply, i, len, results;
     anoms = anomHandler.parseRes(anomRes.body, rHost);
     if (anoms.length === 0) {
       userRes.reply('No data found for host: ' + rHost + "\n");
     }
+    getMetricsAndReply = function (anom) {
+      var clonedAnom;
+      clonedAnom = JSON.parse(JSON.stringify(anom));
+      return function () {
+        return anomHandler.getMetrics(clonedAnom).then((function (resultRes) {
+          clonedAnom.text += "*Breached Metrics:* " + getLabels(resultRes);
+          return userRes.reply(clonedAnom.text);
+        }));
+      };
+    };
     results = [];
     for (i = 0, len = anoms.length; i < len; i++) {
       anom = anoms[i];
-      results.push(anomHandler.getMetrics(anom).then((function (resultRes) {
-        anom.text += "*Breached Metrics:* " + getLabels(resultRes);
-        return userRes.reply(anom.text);
-      })));
+      results.push((getMetricsAndReply(anom))());
     }
     return results;
   };

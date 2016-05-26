@@ -4,13 +4,13 @@ require('request-debug')(request);
 ########################################################
 #                   Opsa API                           #
 ########################################################
-OpsaAPI = (xsrfToken, jSessionId) ->
+OpsaSession = (xsrfToken, jSessionId) ->
   if xsrfToken
     @xsrfToken = xsrfToken.slice 1, -1
   if jSessionId
     @jSessionId = jSessionId
   return
-OpsaAPI::login = (userRes, loginCallback) ->
+OpsaSession::login = (userRes, loginCallback) ->
   if !okToContinue()
     return new Promise((resolve, reject) ->)
   userRes.reply 'Please wait...'
@@ -126,13 +126,11 @@ now = new Date().getTime()
 ########################################################
 #                   Anomalies API                      #
 ########################################################
-AnomAPI = (xsrfToken, jSessionId) ->
-  OpsaAPI.call this, xsrfToken, jSessionId
+AnomHandler = (xsrfToken, jSessionId) ->
+  OpsaSession.call this, xsrfToken, jSessionId
   return
-OpsaAPI = OpsaAPI
-AnomAPI.prototype = Object.create(OpsaAPI.prototype)
-AnomAPI::constructor = AnomAPI
-AnomAPI::invoke = () ->
+AnomHandler::constructor = AnomHandler
+AnomHandler::invokeAPI = () ->
   oneHourAgo = getOneHourAgoTS()
   createAnomaliesApiUri = (startTime, endTime)->
     "/rest/getQueryResult?aqlQuery=%5Banomalies%5BattributeQuery(%7Bopsa_collection_anomalies%7D,+%7B%7D,+%7Bi.anomaly_id%7D)%5D()%5D+&endTime=" + endTime + "&granularity=0&pageIndex=1&paramsMap=%7B%22$drill_dest%22:%22AnomalyInstance%22,%22$drill_label%22:%22opsa_collection_anomalies_description%22,%22$drill_value%22:%22opsa_collection_anomalies_anomaly_id%22,%22$limit%22:%22500%22,%22$interval%22:300,%22$offset%22:0,%22$N%22:5,%22$pctile%22:10,%22$timeoffset%22:0,%22$starttimeoffset%22:0,%22$endtimeoffset%22:0,%22$timeout%22:0,%22$drill_type%22:%22%22,%22$problemtime%22:1463653196351,%22$aggregate_playback_flag%22:null%7D&queryType=generic&startTime=" + startTime + "&timeZoneOffset=-180&timeout=10&visualType=table"
@@ -141,19 +139,19 @@ AnomAPI::invoke = () ->
   @sHeaders =
     'XSRFToken': @xsrfToken
   requestp(anomUrl, @sJar, 'POST', @sHeaders)
-getMetricsDescUrl = (parsedInfo) ->
+AnomHandler::getMetricsDescUrl = (parsedInfo) ->
   now = new Date().getTime()
   endTime = parsedInfo.inactiveTime ? now
   metricsUri = "/rest/getQueryDescriptors?endTime=" + endTime + "&q=AnomalyInstance(" + parsedInfo.anomalyId + ")&startTime=" + parsedInfo.triggerTime
   return getOpsaUri() + metricsUri
-getMetricsUrl = (parsedInfo, descResponse) ->
+AnomHandler::getMetricsUrl = (parsedInfo, descResponse) ->
   now = new Date().getTime()
   endTime = parsedInfo.inactiveTime ? now
   descArray = JSON.parse(descResponse.body).descriptors
   for desc of descArray
     if (descArray[desc].label.startsWith("Breaches for Anomaly"))
       return getOpsaUri() + "/rest/getQueryResult?aqlQuery=" + encodeURIComponent(descArray[desc].aql) + "&endTime=" + endTime + '&granularity=0&pageIndex=1&paramsMap={"$starttime":"' + new Date(parsedInfo.triggerTime) + '","$limit":"1000","$interval":7200,"$offset":0,"$N":5,"$pctile":10,"$timeoffset":0,"$starttimeoffset":0,"$endtimeoffset":0,"$timeout":0,"$drill_dest":"","$drill_label":"","$drill_value":"","$drill_type":"","$problemtime":' + parsedInfo.triggerTime + ',"$aggregate_playback_flag":null}&queryType=anomalyInstance&startTime=' + parsedInfo.triggerTime + '&timeZoneOffset=-180&timeout=10'
-getAnoms = (body, requestedHost) ->
+AnomHandler::parseRes = (body, requestedHost) ->
   anomalies = new Array()
   collections = JSON.parse(body)
   extractInfoFromRawProps = (props, propName, propVal)->
@@ -230,29 +228,35 @@ getAnoms = (body, requestedHost) ->
           if (singleAnomaly)
             anomalies.push(singleAnomaly)
   return anomalies
+AnomHandler::getMetrics = (anom) ->
+  sJar = @sJar
+  sHeaders = @sHeaders
+  mDescUrl = AnomHandler::getMetricsDescUrl(anom)
+  requestp(mDescUrl, sJar, 'GET', sHeaders).then ((descRes) ->
+    mUrl = AnomHandler::getMetricsUrl(anom, descRes)
+    requestp(mUrl, sJar, 'POST', sHeaders)
+  )
 ########################################################
 #                   Controllers                        #
 ########################################################
-
+handleAnomRes = (anomHandler, anomRes, rHost, userRes) ->
+  anoms = anomHandler.parseRes(anomRes.body, rHost)
+  if (anoms.length == 0)
+    userRes.reply 'No data found for host: ' + rHost + "\n"
+  for anom in anoms
+    anomHandler.getMetrics(anom).then ((resultRes) ->
+      anom.text += "*Breached Metrics:* " + getLabels(resultRes)
+      userRes.reply anom.text
+    )
+    
 module.exports = (robot) ->
   robot.respond /display anomalies for host:?:\s*(.*)/i, (userRes) ->
     rHost = getRequestedHost(userRes)
-    opsaAPI = new OpsaAPI()
-    opsaAPI.login(userRes).then ((res) ->
-      anomAPI = new AnomAPI(res.body, opsaAPI.sData.sId)
-      anomAPI.invoke().then ((anomRes) ->
-        anoms = getAnoms(anomRes.body, rHost)
-        if (anoms.length == 0)
-          return userRes.reply 'No data found for host: ' + rHost + "\n"
-        for anom in anoms
-          mDescUrl = getMetricsDescUrl(anom)
-          requestp(mDescUrl, anomAPI.sJar, 'GET', anomAPI.sHeaders).then ((descRes) ->
-            mUrl = getMetricsUrl(anom, descRes)
-            requestp(mUrl, anomAPI.sJar, 'POST', anomAPI.sHeaders).then ((resultRes) ->
-              anom.text += "*Breached Metrics:* " + getLabels(resultRes)
-              userRes.reply anom.text
-            )
-          )
+    sess = new OpsaSession()
+    sess.login(userRes).then ((res) ->
+      anomHandler = new AnomHandler(res.body, sess.sData.sId)
+      anomHandler.invokeAPI().then ((anomRes) ->
+        handleAnomRes(anomHandler, anomRes, rHost, userRes)
         ongoing = false
         return
       )

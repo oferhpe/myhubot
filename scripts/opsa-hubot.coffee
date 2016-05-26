@@ -2,7 +2,7 @@ request = require('request')
 Properties = require('opsa-api-properties.coffee')
 require('request-debug')(request);
 ########################################################
-#                   Opsa API                      #
+#                   Opsa API                           #
 ########################################################
 OpsaAPI = (xsrfToken, jSessionId) ->
   if xsrfToken
@@ -108,8 +108,21 @@ getLabels = (resultResponse) ->
   for prop,val of resJson
     if prop != "anomaly_result"
       for childProp in val
+        if childProp.metricLabels.length > 1
+          pref = "\n>"
+        else
+          pref = ""
         for label in childProp.metricLabels
-          labels += label
+          labels += pref + label.replace(/&#x[0-9]+;/g, '')
+  labels.replace(",", "")
+getOneHourAgoTS = () ->
+  ONE_HOUR = 60 * 60 * 1000;
+  return now - ONE_HOUR
+getLinkToHost = (hostName) ->
+  encodedQuery = encodeURIComponent('host withkey "' + hostName)
+  url = getOpsaUri() + '/#/logsearchpql?search=' + encodedQuery + '"&start=' + getOneHourAgoTS() + '&end=' + now + '&selectedTimeRange=ONE_HOUR'
+  return url
+now = new Date().getTime()
 ########################################################
 #                   Anomalies API                      #
 ########################################################
@@ -120,9 +133,7 @@ OpsaAPI = OpsaAPI
 AnomAPI.prototype = Object.create(OpsaAPI.prototype)
 AnomAPI::constructor = AnomAPI
 AnomAPI::invoke = () ->
-  ONE_HOUR = 60 * 60 * 1000;
-  now = new Date().getTime()
-  oneHourAgo = now - ONE_HOUR
+  oneHourAgo = getOneHourAgoTS()
   createAnomaliesApiUri = (startTime, endTime)->
     "/rest/getQueryResult?aqlQuery=%5Banomalies%5BattributeQuery(%7Bopsa_collection_anomalies%7D,+%7B%7D,+%7Bi.anomaly_id%7D)%5D()%5D+&endTime=" + endTime + "&granularity=0&pageIndex=1&paramsMap=%7B%22$drill_dest%22:%22AnomalyInstance%22,%22$drill_label%22:%22opsa_collection_anomalies_description%22,%22$drill_value%22:%22opsa_collection_anomalies_anomaly_id%22,%22$limit%22:%22500%22,%22$interval%22:300,%22$offset%22:0,%22$N%22:5,%22$pctile%22:10,%22$timeoffset%22:0,%22$starttimeoffset%22:0,%22$endtimeoffset%22:0,%22$timeout%22:0,%22$drill_type%22:%22%22,%22$problemtime%22:1463653196351,%22$aggregate_playback_flag%22:null%7D&queryType=generic&startTime=" + startTime + "&timeZoneOffset=-180&timeout=10&visualType=table"
   anomUrl = getOpsaUri() + createAnomaliesApiUri(oneHourAgo, now)
@@ -145,7 +156,7 @@ getMetricsUrl = (parsedInfo, descResponse) ->
 getAnoms = (body, requestedHost) ->
   anomalies = new Array()
   collections = JSON.parse(body)
-  extractInfoFromProps = (props, propName, propVal)->
+  extractInfoFromRawProps = (props, propName, propVal)->
     switch propName
       when "Active time"
         props.triggerTime = propVal
@@ -153,6 +164,8 @@ getAnoms = (body, requestedHost) ->
         props.inactiveTime = propVal
       when "Anomaly id"
         props.anomalyId = propVal
+      when "Entity"
+        props.rawEntity = propVal
     return props
   modifyOutput = (propName, propVal)->
     switch propName
@@ -163,7 +176,7 @@ getAnoms = (body, requestedHost) ->
         return null
       when "Active time"
         propName = "Trigger Time"
-        propVal = new Date(propVal)
+        propVal = new Date(Number(propVal))
       when "Severity"
         str = ''
         jsonValue = JSON.parse(propVal)
@@ -171,6 +184,8 @@ getAnoms = (body, requestedHost) ->
           str += ',' + jsonValue[val]
         str = str.replace ',', ''
         propVal = str
+      when "Entity"
+        propVal = getLinkToHost(propVal);
     return {
       propName,
       propVal
@@ -183,7 +198,7 @@ getAnoms = (body, requestedHost) ->
     for colIdx of anomalyRawData
       propName = propNames[colIdx]
       propVal = anomalyRawData[colIdx].displayValue
-      extractedInfo = extractInfoFromProps(extractedInfo, propName, propVal)
+      extractedInfo = extractInfoFromRawProps(extractedInfo, propName, propVal)
       modifiedProps = modifyOutput(propName, propVal)
       if (!modifiedProps)
         continue
@@ -193,11 +208,11 @@ getAnoms = (body, requestedHost) ->
         return null
       if display == false && propName == "Entity" && (propVal == requestedHost || requestedHost == "*")
         display = true
-        hostName = propVal
+        hostName = extractedInfo.rawEntity
       anomalyPropertiesAsText += "*" + propName + ":* " + propVal + "\n"
     if (!display)
       return null
-    extractedInfo.text = "\n*Anomalies for host: *`" + hostName + "`\n" + anomalyPropertiesAsText
+    extractedInfo.text = "\n*Displaying anomalies for host:* " + hostName + "\n>>>" + anomalyPropertiesAsText
     return extractedInfo
   for collectionGroupId of collections
     collectionGroup = collections[collectionGroupId]

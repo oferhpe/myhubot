@@ -101,7 +101,10 @@ okToContinue = ->
     ongoing = true
     return true
 getRequestedHost = (res) ->
-  res.match[1].replace(/^https?\:\/\//i, "");
+  res.match[2].replace(/^https?\:\/\//i, "");
+getRequestedAnomaliyType = (res) ->
+  res.match[1]
+
 getLabels = (resultResponse) ->
   resJson = JSON.parse(resultResponse.body)
   labels = ""
@@ -151,10 +154,11 @@ AnomHandler::getMetricsUrl = (parsedInfo, descResponse) ->
   for desc of descArray
     if (descArray[desc].label.startsWith("Breaches for Anomaly"))
       return getOpsaUri() + "/rest/getQueryResult?aqlQuery=" + encodeURIComponent(descArray[desc].aql) + "&endTime=" + endTime + '&granularity=0&pageIndex=1&paramsMap={"$starttime":"' + new Date(parsedInfo.triggerTime) + '","$limit":"1000","$interval":7200,"$offset":0,"$N":5,"$pctile":10,"$timeoffset":0,"$starttimeoffset":0,"$endtimeoffset":0,"$timeout":0,"$drill_dest":"","$drill_label":"","$drill_value":"","$drill_type":"","$problemtime":' + parsedInfo.triggerTime + ',"$aggregate_playback_flag":null}&queryType=anomalyInstance&startTime=' + parsedInfo.triggerTime + '&timeZoneOffset=-180&timeout=10'
-AnomHandler::parseRes = (body, requestedHost) ->
+AnomHandler::parseRes = (body, requestedHost, res) ->
   anomalies = new Array()
   collections = JSON.parse(body)
-  extractInfoFromRawProps = (props, propName, propVal)->
+  extractInfoFromRawProps = (props, propName, propContainer)->
+    propVal = propContainer.displayValue
     switch propName
       when "Active time"
         props.triggerTime = propVal
@@ -164,8 +168,12 @@ AnomHandler::parseRes = (body, requestedHost) ->
         props.anomalyId = propVal
       when "Entity"
         props.rawEntity = propVal
+        if (propContainer.drillPQL.startsWith("host"))
+          props.anomalyType = "host"
+        if (propContainer.drillPQL.startsWith("service"))
+          props.anomalyType = "service"
     return props
-  modifyOutput = (propName, propVal)->
+  modifyOutput = (propName, propVal, extractedInfo)->
     switch propName
       when "Status"
         if propVal == "Inactive"
@@ -183,7 +191,8 @@ AnomHandler::parseRes = (body, requestedHost) ->
         str = str.replace ',', ''
         propVal = str
       when "Entity"
-        propVal = getLinkToHost(propVal);
+        if (extractedInfo.anomalyType == "host")
+          propVal = getLinkToHost(propVal);
     return {
       propName,
       propVal
@@ -196,21 +205,24 @@ AnomHandler::parseRes = (body, requestedHost) ->
     for colIdx of anomalyRawData
       propName = propNames[colIdx]
       propVal = anomalyRawData[colIdx].displayValue
-      extractedInfo = extractInfoFromRawProps(extractedInfo, propName, propVal)
-      modifiedProps = modifyOutput(propName, propVal)
+      #      drillPQL = anomalyRawData[colIdx].displayValue
+      extractedInfo = extractInfoFromRawProps(extractedInfo, propName, anomalyRawData[colIdx])
+      modifiedProps = modifyOutput(propName, propVal, extractedInfo)
       if (!modifiedProps)
         continue
       propName = modifiedProps.propName
       propVal = modifiedProps.propVal
       if propName == "Status" && propVal != "active"
         return null
-      if display == false && propName == "Entity" && (propVal == requestedHost || requestedHost == "*")
+      if display == false && propName == "Entity" && (propVal == requestedHost || requestedHost == "*") && ( getRequestedAnomaliyType(res) == extractedInfo.anomalyType)
         display = true
         hostName = extractedInfo.rawEntity
+      if propName == "Entity" && extractedInfo.anomalyType == "service"
+        continue
       anomalyPropertiesAsText += "*" + propName + ":* " + propVal + "\n"
     if (!display)
       return null
-    extractedInfo.text = "\n*Displaying anomalies for host:* " + hostName + "\n>>>" + anomalyPropertiesAsText
+    extractedInfo.text = "\n*Displaying anomalies for " + getRequestedAnomaliyType(res) + ":* " + hostName + "\n>>>" + anomalyPropertiesAsText
     return extractedInfo
   for collectionGroupId of collections
     collectionGroup = collections[collectionGroupId]
@@ -240,7 +252,7 @@ AnomHandler::getMetrics = (anom) ->
 #                   Controllers                        #
 ########################################################
 handleAnomRes = (anomHandler, anomRes, rHost, userRes) ->
-  anoms = anomHandler.parseRes(anomRes.body, rHost)
+  anoms = anomHandler.parseRes(anomRes.body, rHost, userRes)
   if (anoms.length == 0)
     userRes.reply 'No data found for host: ' + rHost + "\n"
   getMetricsAndReply = (anom)->
@@ -254,7 +266,7 @@ handleAnomRes = (anomHandler, anomRes, rHost, userRes) ->
     (getMetricsAndReply(anom))()
 
 module.exports = (robot) ->
-  robot.respond /display anomalies for host:?:\s*(.*)/i, (userRes) ->
+  robot.respond /display anomalies for (.*):?:\s*(.*)/i, (userRes) ->
     rHost = getRequestedHost(userRes)
     sess = new OpsaSession()
     sess.login(userRes).then ((res) ->

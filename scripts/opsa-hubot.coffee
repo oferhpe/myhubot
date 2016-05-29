@@ -22,13 +22,13 @@ OpsaSession::login = (userRes, loginCallback) ->
     j_password: Properties.password
   @sData = {}
   localSessionData = @sData
-  requestp(opsaUri).then ((res) ->
+  requestp({url: opsaUri}).then ((res) ->
     jar4SecurityRequest = createJar(res, seqUrl, 1)
-    requestp(seqUrl, jar4SecurityRequest, 'POST', {}, loginForm).then ((res) ->
-      requestp(opsaUri, jar4SecurityRequest).then ((apiSessionResponse) ->
+    requestp({url: seqUrl, jar: jar4SecurityRequest, method: 'POST', form: loginForm}).then ((res) ->
+      requestp({url: opsaUri, jar: jar4SecurityRequest}).then ((apiSessionResponse) ->
         localSessionData.sId = getSessionId(apiSessionResponse, 0)
         jar4XSRFRequest = createJar(apiSessionResponse, xsrfUrl)
-        requestp(xsrfUrl, jar4XSRFRequest)
+        requestp({url: xsrfUrl, jar: jar4XSRFRequest})
       )
     )
   ), (err) ->
@@ -36,11 +36,13 @@ OpsaSession::login = (userRes, loginCallback) ->
     console.error '%s; %s', err.message, getOpsaUri()
     console.log '%j', err.res.statusCode
     return
-requestp = (url, jar, method, headers, form) ->
-  headers = headers or {}
-  method = method or 'GET'
-  jar = jar or {}
-  form = form or {}
+requestp = (params) ->
+  url = params.url
+  headers = params.headers or {}
+  method = params.method or 'GET'
+  jar = params.jar or {}
+  form = params.form or {}
+  progressCallback = @progressCallback or () ->
   new Promise((resolve, reject) ->
     reqData = {
       uri: url
@@ -52,6 +54,7 @@ requestp = (url, jar, method, headers, form) ->
     if form
       reqData.form = form
     request reqData, (err, res, body) ->
+      progressCallback(err, res, body)
       if err
         return reject(err)
       else if res.statusCode == 200 || res.statusCode == 302 || res.statusCode == 400
@@ -104,17 +107,20 @@ getRequestedHost = (res) ->
   res.match[2].replace(/^https?\:\/\//i, "");
 getRequestedAnomaliyType = (res) ->
   res.match[1]
-
 getLabels = (resultResponse) ->
   resJson = JSON.parse(resultResponse.body)
   labels = ""
   labelCount = 0
+  uniqueLabels = {}
   for prop,val of resJson
     if prop != "anomaly_result"
       for childProp in val
         labelCount++
-        for label in childProp.metricLabels
-          labels += label.replace(/&#x[0-9]+;/g, '') + "\n>"
+        for labelText in childProp.metricLabels
+          labelText = labelText.replace(/&#x[0-9]+;/g, '')
+          if (!uniqueLabels[labelText])
+            uniqueLabels[labelText] = 1
+            labels += labelText + "\n>"
   labels.replace(",", "")
   if (labelCount > 1)
     labels = "\n>" + labels
@@ -126,6 +132,8 @@ getLinkToHost = (hostName) ->
   encodedQuery = encodeURIComponent('host withkey "' + hostName)
   url = getOpsaUri() + '/#/logsearchpql?search=' + encodedQuery + '"&start=' + getOneHourAgoTS() + '&end=' + now + '&selectedTimeRange=ONE_HOUR'
   return url
+progressCallback = ()->
+
 now = new Date().getTime()
 ########################################################
 #                   Anomalies API                      #
@@ -142,7 +150,7 @@ AnomHandler::invokeAPI = () ->
   @sJar = generateJar(@jSessionId, anomUrl)
   @sHeaders =
     'XSRFToken': @xsrfToken
-  requestp(anomUrl, @sJar, 'POST', @sHeaders)
+  requestp({url: anomUrl, jar: @sJar, method: 'POST', headers: @sHeaders})
 AnomHandler::getMetricsDescUrl = (parsedInfo) ->
   now = new Date().getTime()
   endTime = parsedInfo.inactiveTime ? now
@@ -240,7 +248,6 @@ AnomHandler::parseRes = (res, userRes) ->
         for rowIdx of tableRows
           row = tableRows[rowIdx]
           singleAnomaly = extractSingleAnomalyData(row)
-
           if (singleAnomaly)
             anomalies.push(singleAnomaly)
   return anomalies
@@ -248,9 +255,9 @@ AnomHandler::getMetrics = (anom) ->
   sJar = @sJar
   sHeaders = @sHeaders
   mDescUrl = AnomHandler::getMetricsDescUrl(anom)
-  requestp(mDescUrl, sJar, 'GET', sHeaders).then ((descRes) ->
+  requestp({url: mDescUrl, jar: sJar, method: 'GET', headers: sHeaders}).then ((descRes) ->
     mUrl = AnomHandler::getMetricsUrl(anom, descRes)
-    requestp(mUrl, sJar, 'POST', sHeaders)
+    requestp({url: mUrl, jar: sJar, method: 'POST', headers: sHeaders})
   )
 ########################################################
 #                   Controllers                        #
@@ -265,13 +272,12 @@ handleAnomRes = (anomHandler, anomRes, userRes) ->
       anomHandler.getMetrics(clonedAnom).then ((resultRes) ->
         clonedAnom.text += "*Breached Metrics:* " + getLabels(resultRes)
         userRes.reply clonedAnom.text
-    )
+      )
   for anom in anoms
     (getMetricsAndReply(anom))()
-
 module.exports = (robot) ->
   robot.respond /display anomalies for (.*):?:\s*(.*)/i, (userRes) ->
-    rHost = getRequestedHost(userRes)
+    requestp = requestp.bind this
     sess = new OpsaSession()
     sess.login(userRes).then ((res) ->
       anomHandler = new AnomHandler(res.body, sess.sData.sId)

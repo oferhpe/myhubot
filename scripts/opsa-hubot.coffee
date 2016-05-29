@@ -4,14 +4,13 @@ require('request-debug')(request);
 ########################################################
 #                   Opsa API                           #
 ########################################################
-OpsaSession = (xsrfToken, jSessionId) ->
+OpsaSessionHandler = (xsrfToken, jSessionId) ->
   if xsrfToken
     @xsrfToken = xsrfToken.slice 1, -1
   if jSessionId
     @jSessionId = jSessionId
   return
-OpsaSession::login = (userRes, loginCallback) ->
-  userRes.reply 'Please wait...'
+OpsaSessionHandler::login = () ->
   opsaUri = getOpsaUri();
   seqUrl = opsaUri + "/j_security_check"
   xsrfUrl = opsaUri + "/rest/getXSRFToken"
@@ -119,29 +118,28 @@ getLinkToHost = (hostName) ->
   url = getOpsaUri() + '/#/logsearchpql?search=' + encodedQuery + '"&start=' + getOneHourAgoTS() + '&end=' + now + '&selectedTimeRange=ONE_HOUR'
   return url
 progressCallback = ()->
-handleAnomRes = (anomHandler, anomRes, userRes) ->
-  anoms = anomHandler.parseRes(anomRes, userRes)
-  if (anoms.length == 0)
-    userRes.reply 'No data found for host: ' + getRequestedHost(userRes) + "\n"
-  getMetricsAndReply = (anom)->
-    clonedAnom = JSON.parse(JSON.stringify(anom))
-    return () ->
-      anomHandler.getMetrics(clonedAnom).then ((resultRes) ->
-        clonedAnom.text += "*Breached Metrics:* " + getLabels(resultRes)
-        userRes.reply clonedAnom.text
-      )
-  for anom in anoms
-    (getMetricsAndReply(anom))()
+
 now = new Date().getTime()
 registeredListeners = {}
+RegistrationHandler = ()->
+  @registeredListeners = {}
+  @register = (robot, exp, callback) ->
+    if (@registeredListeners[exp])
+      return
+    else
+      @registeredListeners[exp] = 1
+    robot.respond exp, callback
+  return
+hubotRouter = new RegistrationHandler()
+
 ########################################################
 #                   Anomalies API                      #
 ########################################################
-AnomHandler = (xsrfToken, jSessionId) ->
-  OpsaSession.call this, xsrfToken, jSessionId
+AnomAPI = (xsrfToken, jSessionId) ->
+  OpsaSessionHandler.call this, xsrfToken, jSessionId
   return
-AnomHandler::constructor = AnomHandler
-AnomHandler::invokeAPI = () ->
+AnomAPI::constructor = AnomAPI
+AnomAPI::invoke = (userRes) ->
   oneHourAgo = getOneHourAgoTS()
   createAnomaliesApiUri = (startTime, endTime)->
     "/rest/getQueryResult?aqlQuery=%5Banomalies%5BattributeQuery(%7Bopsa_collection_anomalies%7D,+%7B%7D,+%7Bi.anomaly_id%7D)%5D()%5D+&endTime=" + endTime + "&granularity=0&pageIndex=1&paramsMap=%7B%22$drill_dest%22:%22AnomalyInstance%22,%22$drill_label%22:%22opsa_collection_anomalies_description%22,%22$drill_value%22:%22opsa_collection_anomalies_anomaly_id%22,%22$limit%22:%22500%22,%22$interval%22:300,%22$offset%22:0,%22$N%22:5,%22$pctile%22:10,%22$timeoffset%22:0,%22$starttimeoffset%22:0,%22$endtimeoffset%22:0,%22$timeout%22:0,%22$drill_type%22:%22%22,%22$problemtime%22:1463653196351,%22$aggregate_playback_flag%22:null%7D&queryType=generic&startTime=" + startTime + "&timeZoneOffset=-180&timeout=10&visualType=table"
@@ -149,20 +147,22 @@ AnomHandler::invokeAPI = () ->
   @sJar = generateJar(@jSessionId, anomUrl)
   @sHeaders =
     'XSRFToken': @xsrfToken
-  requestp({url: anomUrl, jar: @sJar, method: 'POST', headers: @sHeaders})
-AnomHandler::getMetricsDescUrl = (parsedInfo) ->
+  self = @
+  requestp({url: anomUrl, jar: @sJar, method: 'POST', headers: @sHeaders}).then ((anomRes) ->
+    self.replyWithMetrics(anomRes, userRes))
+AnomAPI::getMetricsDescUrl = (parsedInfo) ->
   now = new Date().getTime()
   endTime = parsedInfo.inactiveTime ? now
   metricsUri = "/rest/getQueryDescriptors?endTime=" + endTime + "&q=AnomalyInstance(" + parsedInfo.anomalyId + ")&startTime=" + parsedInfo.triggerTime
   return getOpsaUri() + metricsUri
-AnomHandler::getMetricsUrl = (parsedInfo, descResponse) ->
+AnomAPI::getMetricsUrl = (parsedInfo, descResponse) ->
   now = new Date().getTime()
   endTime = parsedInfo.inactiveTime ? now
   descArray = JSON.parse(descResponse.body).descriptors
   for desc of descArray
     if (descArray[desc].label.startsWith("Breaches for Anomaly"))
       return getOpsaUri() + "/rest/getQueryResult?aqlQuery=" + encodeURIComponent(descArray[desc].aql) + "&endTime=" + endTime + '&granularity=0&pageIndex=1&paramsMap={"$starttime":"' + new Date(parsedInfo.triggerTime) + '","$limit":"1000","$interval":7200,"$offset":0,"$N":5,"$pctile":10,"$timeoffset":0,"$starttimeoffset":0,"$endtimeoffset":0,"$timeout":0,"$drill_dest":"","$drill_label":"","$drill_value":"","$drill_type":"","$problemtime":' + parsedInfo.triggerTime + ',"$aggregate_playback_flag":null}&queryType=anomalyInstance&startTime=' + parsedInfo.triggerTime + '&timeZoneOffset=-180&timeout=10'
-AnomHandler::parseRes = (res, userRes) ->
+AnomAPI::parseRes = (res, userRes) ->
   body = res.body
   anomalies = new Array()
   collections = JSON.parse(body)
@@ -250,32 +250,43 @@ AnomHandler::parseRes = (res, userRes) ->
           if (singleAnomaly)
             anomalies.push(singleAnomaly)
   return anomalies
-AnomHandler::getMetrics = (anom) ->
+AnomAPI::getMetrics = (anom) ->
   sJar = @sJar
   sHeaders = @sHeaders
-  mDescUrl = AnomHandler::getMetricsDescUrl(anom)
+  mDescUrl = AnomAPI::getMetricsDescUrl(anom)
   requestp({url: mDescUrl, jar: sJar, method: 'GET', headers: sHeaders}).then ((descRes) ->
-    mUrl = AnomHandler::getMetricsUrl(anom, descRes)
+    mUrl = AnomAPI::getMetricsUrl(anom, descRes)
     requestp({url: mUrl, jar: sJar, method: 'POST', headers: sHeaders})
   )
+AnomAPI::replyWithMetrics = (anomRes, userRes) ->
+  anoms = @parseRes(anomRes, userRes)
+  if (anoms.length == 0)
+    userRes.reply 'No data found for host: ' + getRequestedHost(userRes) + "\n"
+  self = @
+  getMetricsAndReply = (anom)->
+    clonedAnom = JSON.parse(JSON.stringify(anom))
+    return () ->
+      self.getMetrics(clonedAnom).then ((resultRes) ->
+        clonedAnom.text += "*Breached Metrics:* " + getLabels(resultRes)
+        userRes.reply clonedAnom.text
+      )
+  for anom in anoms
+    (getMetricsAndReply(anom))()
 ########################################################
 #                   Controllers                        #
 ########################################################
 
 module.exports = (robot) ->
-  exp = /display anomalies for (.*):?:\s*(.*)/i
-  if (registeredListeners[exp])
-    return
-  else
-    registeredListeners[exp] = 1
-  robot.respond exp, (userRes) ->
+  invokeAnomaliesAPI = (userRes) ->
     requestp = requestp.bind this
-    sess = new OpsaSession()
-    sess.login(userRes).then ((res) ->
-      anomHandler = new AnomHandler(res.body, sess.sData.sId)
-      anomHandler.invokeAPI().then ((anomRes) ->
-        handleAnomRes(anomHandler, anomRes, userRes)
-        return
+    opsaSessHandler = new OpsaSessionHandler()
+    userRes.reply 'Please wait...'
+    opsaSessHandler.login().then ((res) ->
+      xsrfToken = res.body
+      jSessionId = opsaSessHandler.sData.sId
+      anomAPI = new AnomAPI(xsrfToken, jSessionId)
+      anomAPI.invoke(userRes)
       )
-    )
+  exp = /display anomalies for (.*):?:\s*(.*)/i
+  hubotRouter.register robot, exp, invokeAnomaliesAPI
 

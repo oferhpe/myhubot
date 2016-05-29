@@ -108,16 +108,17 @@ getRequestedAnomaliyType = (res) ->
 getLabels = (resultResponse) ->
   resJson = JSON.parse(resultResponse.body)
   labels = ""
+  labelCount = 0
   for prop,val of resJson
     if prop != "anomaly_result"
       for childProp in val
-        if childProp.metricLabels.length > 1
-          pref = "\n>"
-        else
-          pref = ""
+        labelCount++
         for label in childProp.metricLabels
-          labels += pref + label.replace(/&#x[0-9]+;/g, '')
+          labels += label.replace(/&#x[0-9]+;/g, '') + "\n>"
   labels.replace(",", "")
+  if (labelCount > 1)
+    labels = "\n>" + labels
+  return labels
 getOneHourAgoTS = () ->
   ONE_HOUR = 60 * 60 * 1000;
   return now - ONE_HOUR
@@ -154,9 +155,11 @@ AnomHandler::getMetricsUrl = (parsedInfo, descResponse) ->
   for desc of descArray
     if (descArray[desc].label.startsWith("Breaches for Anomaly"))
       return getOpsaUri() + "/rest/getQueryResult?aqlQuery=" + encodeURIComponent(descArray[desc].aql) + "&endTime=" + endTime + '&granularity=0&pageIndex=1&paramsMap={"$starttime":"' + new Date(parsedInfo.triggerTime) + '","$limit":"1000","$interval":7200,"$offset":0,"$N":5,"$pctile":10,"$timeoffset":0,"$starttimeoffset":0,"$endtimeoffset":0,"$timeout":0,"$drill_dest":"","$drill_label":"","$drill_value":"","$drill_type":"","$problemtime":' + parsedInfo.triggerTime + ',"$aggregate_playback_flag":null}&queryType=anomalyInstance&startTime=' + parsedInfo.triggerTime + '&timeZoneOffset=-180&timeout=10'
-AnomHandler::parseRes = (body, requestedHost, res) ->
+AnomHandler::parseRes = (res, userRes) ->
+  body = res.body
   anomalies = new Array()
   collections = JSON.parse(body)
+  requestedHost = getRequestedHost(userRes)
   extractInfoFromRawProps = (props, propName, propContainer)->
     propVal = propContainer.displayValue
     switch propName
@@ -214,7 +217,7 @@ AnomHandler::parseRes = (body, requestedHost, res) ->
       propVal = modifiedProps.propVal
       if propName == "Status" && propVal != "active"
         return null
-      if display == false && propName == "Entity" && (propVal == requestedHost || requestedHost == "*") && ( getRequestedAnomaliyType(res) == extractedInfo.anomalyType)
+      if display == false && propName == "Entity" && (propVal == requestedHost || requestedHost == "*") && ( getRequestedAnomaliyType(userRes) == extractedInfo.anomalyType)
         display = true
         hostName = extractedInfo.rawEntity
       if propName == "Entity" && extractedInfo.anomalyType == "service"
@@ -222,7 +225,7 @@ AnomHandler::parseRes = (body, requestedHost, res) ->
       anomalyPropertiesAsText += "*" + propName + ":* " + propVal + "\n"
     if (!display)
       return null
-    extractedInfo.text = "\n*Displaying anomalies for " + getRequestedAnomaliyType(res) + ":* " + hostName + "\n>>>" + anomalyPropertiesAsText
+    extractedInfo.text = "\n*Displaying anomalies for " + getRequestedAnomaliyType(userRes) + ":* " + hostName + "\n>>>" + anomalyPropertiesAsText
     return extractedInfo
   for collectionGroupId of collections
     collectionGroup = collections[collectionGroupId]
@@ -237,6 +240,7 @@ AnomHandler::parseRes = (body, requestedHost, res) ->
         for rowIdx of tableRows
           row = tableRows[rowIdx]
           singleAnomaly = extractSingleAnomalyData(row)
+
           if (singleAnomaly)
             anomalies.push(singleAnomaly)
   return anomalies
@@ -251,10 +255,10 @@ AnomHandler::getMetrics = (anom) ->
 ########################################################
 #                   Controllers                        #
 ########################################################
-handleAnomRes = (anomHandler, anomRes, rHost, userRes) ->
-  anoms = anomHandler.parseRes(anomRes.body, rHost, userRes)
+handleAnomRes = (anomHandler, anomRes, userRes) ->
+  anoms = anomHandler.parseRes(anomRes, userRes)
   if (anoms.length == 0)
-    userRes.reply 'No data found for host: ' + rHost + "\n"
+    userRes.reply 'No data found for host: ' + getRequestedHost(userRes) + "\n"
   getMetricsAndReply = (anom)->
     clonedAnom = JSON.parse(JSON.stringify(anom))
     return () ->
@@ -272,7 +276,7 @@ module.exports = (robot) ->
     sess.login(userRes).then ((res) ->
       anomHandler = new AnomHandler(res.body, sess.sData.sId)
       anomHandler.invokeAPI().then ((anomRes) ->
-        handleAnomRes(anomHandler, anomRes, rHost, userRes)
+        handleAnomRes(anomHandler, anomRes, userRes)
         ongoing = false
         return
       )

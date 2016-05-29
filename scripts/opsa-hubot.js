@@ -138,28 +138,29 @@
     return res.match[1];
   };
   getLabels = function (resultResponse) {
-    var childProp, i, j, label, labels, len, len1, pref, prop, ref, resJson, val;
+    var childProp, i, j, label, labelCount, labels, len, len1, prop, ref, resJson, val;
     resJson = JSON.parse(resultResponse.body);
     labels = "";
+    labelCount = 0;
     for (prop in resJson) {
       val = resJson[prop];
       if (prop !== "anomaly_result") {
         for (i = 0, len = val.length; i < len; i++) {
           childProp = val[i];
-          if (childProp.metricLabels.length > 1) {
-            pref = "\n>";
-          } else {
-            pref = "";
-          }
+          labelCount++;
           ref = childProp.metricLabels;
           for (j = 0, len1 = ref.length; j < len1; j++) {
             label = ref[j];
-            labels += pref + label.replace(/&#x[0-9]+;/g, '');
+            labels += label.replace(/&#x[0-9]+;/g, '') + "\n>";
           }
         }
       }
     }
-    return labels.replace(",", "");
+    labels.replace(",", "");
+    if (labelCount > 1) {
+      labels = "\n>" + labels;
+    }
+    return labels;
   };
   getOneHourAgoTS = function () {
     var ONE_HOUR;
@@ -210,10 +211,12 @@
       }
     }
   };
-  AnomHandler.prototype.parseRes = function (body, requestedHost, res) {
-    var anomalies, collection, collectionGroup, collectionGroupId, collectionId, collections, columnIdx, extractInfoFromRawProps, extractSingleAnomalyData, modifyOutput, propNames, row, rowIdx, singleAnomaly, table, tableIdx, tableRows;
+  AnomHandler.prototype.parseRes = function (res, userRes) {
+    var anomalies, body, collection, collectionGroup, collectionGroupId, collectionId, collections, columnIdx, extractInfoFromRawProps, extractSingleAnomalyData, modifyOutput, propNames, requestedHost, row, rowIdx, singleAnomaly, table, tableIdx, tableRows;
+    body = res.body;
     anomalies = new Array();
     collections = JSON.parse(body);
+    requestedHost = getRequestedHost(userRes);
     extractInfoFromRawProps = function (props, propName, propContainer) {
       var propVal;
       propVal = propContainer.displayValue;
@@ -293,7 +296,7 @@
         if (propName === "Status" && propVal !== "active") {
           return null;
         }
-        if (display === false && propName === "Entity" && (propVal === requestedHost || requestedHost === "*") && (getRequestedAnomaliyType(res) === extractedInfo.anomalyType)) {
+        if (display === false && propName === "Entity" && (propVal === requestedHost || requestedHost === "*") && (getRequestedAnomaliyType(userRes) === extractedInfo.anomalyType)) {
           display = true;
           hostName = extractedInfo.rawEntity;
         }
@@ -305,7 +308,7 @@
       if (!display) {
         return null;
       }
-      extractedInfo.text = "\n*Displaying anomalies for " + getRequestedAnomaliyType(res) + ":* " + hostName + "\n>>>" + anomalyPropertiesAsText;
+      extractedInfo.text = "\n*Displaying anomalies for " + getRequestedAnomaliyType(userRes) + ":* " + hostName + "\n>>>" + anomalyPropertiesAsText;
       return extractedInfo;
     };
     for (collectionGroupId in collections) {
@@ -342,11 +345,11 @@
       return requestp(mUrl, sJar, 'POST', sHeaders);
     }));
   };
-  handleAnomRes = function (anomHandler, anomRes, rHost, userRes) {
+  handleAnomRes = function (anomHandler, anomRes, userRes) {
     var anom, anoms, getMetricsAndReply, i, len, results;
-    anoms = anomHandler.parseRes(anomRes.body, rHost, userRes);
+    anoms = anomHandler.parseRes(anomRes, userRes);
     if (anoms.length === 0) {
-      userRes.reply('No data found for host: ' + rHost + "\n");
+      userRes.reply('No data found for host: ' + getRequestedHost(userRes) + "\n");
     }
     getMetricsAndReply = function (anom) {
       var clonedAnom;
@@ -374,7 +377,7 @@
         var anomHandler;
         anomHandler = new AnomHandler(res.body, sess.sData.sId);
         return anomHandler.invokeAPI().then((function (anomRes) {
-          handleAnomRes(anomHandler, anomRes, rHost, userRes);
+          handleAnomRes(anomHandler, anomRes, userRes);
           ongoing = false;
         }));
       }));

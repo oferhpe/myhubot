@@ -139,7 +139,7 @@ AnomAPI = (xsrfToken, jSessionId) ->
   OpsaSessionHandler.call this, xsrfToken, jSessionId
   return
 AnomAPI::constructor = AnomAPI
-AnomAPI::invoke = (userRes) ->
+AnomAPI::requestPrimaryData = () ->
   oneHourAgo = getOneHourAgoTS()
   createAnomaliesApiUri = (startTime, endTime)->
     "/rest/getQueryResult?aqlQuery=%5Banomalies%5BattributeQuery(%7Bopsa_collection_anomalies%7D,+%7B%7D,+%7Bi.anomaly_id%7D)%5D()%5D+&endTime=" + endTime + "&granularity=0&pageIndex=1&paramsMap=%7B%22$drill_dest%22:%22AnomalyInstance%22,%22$drill_label%22:%22opsa_collection_anomalies_description%22,%22$drill_value%22:%22opsa_collection_anomalies_anomaly_id%22,%22$limit%22:%22500%22,%22$interval%22:300,%22$offset%22:0,%22$N%22:5,%22$pctile%22:10,%22$timeoffset%22:0,%22$starttimeoffset%22:0,%22$endtimeoffset%22:0,%22$timeout%22:0,%22$drill_type%22:%22%22,%22$problemtime%22:1463653196351,%22$aggregate_playback_flag%22:null%7D&queryType=generic&startTime=" + startTime + "&timeZoneOffset=-180&timeout=10&visualType=table"
@@ -148,8 +148,7 @@ AnomAPI::invoke = (userRes) ->
   @sHeaders =
     'XSRFToken': @xsrfToken
   self = @
-  requestp({url: anomUrl, jar: @sJar, method: 'POST', headers: @sHeaders}).then ((anomRes) ->
-    self.replyWithMetrics(anomRes, userRes))
+  requestp({url: anomUrl, jar: @sJar, method: 'POST', headers: @sHeaders})
 AnomAPI::getMetricsDescUrl = (parsedInfo) ->
   now = new Date().getTime()
   endTime = parsedInfo.inactiveTime ? now
@@ -250,7 +249,7 @@ AnomAPI::parseRes = (res, userRes) ->
           if (singleAnomaly)
             anomalies.push(singleAnomaly)
   return anomalies
-AnomAPI::getMetrics = (anom) ->
+AnomAPI::requestMetrices = (anom) ->
   sJar = @sJar
   sHeaders = @sHeaders
   mDescUrl = AnomAPI::getMetricsDescUrl(anom)
@@ -258,15 +257,14 @@ AnomAPI::getMetrics = (anom) ->
     mUrl = AnomAPI::getMetricsUrl(anom, descRes)
     requestp({url: mUrl, jar: sJar, method: 'POST', headers: sHeaders})
   )
-AnomAPI::replyWithMetrics = (anomRes, userRes) ->
-  anoms = @parseRes(anomRes, userRes)
+replyWithMetrics = (anomAPI, anomRes, userRes) ->
+  anoms = anomAPI.parseRes(anomRes, userRes)
   if (anoms.length == 0)
     userRes.reply 'No data found for host: ' + getRequestedHost(userRes) + "\n"
-  self = @
   getMetricsAndReply = (anom)->
     clonedAnom = JSON.parse(JSON.stringify(anom))
     return () ->
-      self.getMetrics(clonedAnom).then ((resultRes) ->
+      anomAPI.requestMetrices(clonedAnom).then ((resultRes) ->
         clonedAnom.text += "*Breached Metrics:* " + getLabels(resultRes)
         userRes.reply clonedAnom.text
       )
@@ -285,7 +283,8 @@ module.exports = (robot) ->
       xsrfToken = res.body
       jSessionId = opsaSessHandler.sData.sId
       anomAPI = new AnomAPI(xsrfToken, jSessionId)
-      anomAPI.invoke(userRes)
+      anomAPI.requestPrimaryData(userRes).then ((anomRes) ->
+        replyWithMetrics(anomAPI, anomRes, userRes))
       )
   exp = /display anomalies for (.*):?:\s*(.*)/i
   hubotRouter.register robot, exp, invokeAnomaliesAPI

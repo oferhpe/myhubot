@@ -11,8 +11,6 @@ OpsaSession = (xsrfToken, jSessionId) ->
     @jSessionId = jSessionId
   return
 OpsaSession::login = (userRes, loginCallback) ->
-  if !okToContinue()
-    return new Promise((resolve, reject) ->)
   userRes.reply 'Please wait...'
   opsaUri = getOpsaUri();
   seqUrl = opsaUri + "/j_security_check"
@@ -32,7 +30,6 @@ OpsaSession::login = (userRes, loginCallback) ->
       )
     )
   ), (err) ->
-    ongoing = false
     console.error '%s; %s', err.message, getOpsaUri()
     console.log '%j', err.res.statusCode
     return
@@ -60,7 +57,6 @@ requestp = (params) ->
       else if res.statusCode == 200 || res.statusCode == 302 || res.statusCode == 400
         resolve res, body
       else
-        ongoing = false
         err = new Error('Unexpected status code: ' + res.statusCode)
         err.res = res
         return reject(err)
@@ -93,16 +89,6 @@ createJar = (res, url, cookieIndex) ->
     return
   jar = generateJar(jSessionId, url)
   return jar
-lastTime = Date.now()
-ongoing = false
-okToContinue = ->
-  secondsSinceLastTime = (Date.now() - lastTime) / 1000
-  if secondsSinceLastTime < 10 && ongoing
-    return false
-  else
-    lastTime = Date.now();
-    ongoing = true
-    return true
 getRequestedHost = (res) ->
   res.match[2].replace(/^https?\:\/\//i, "");
 getRequestedAnomaliyType = (res) ->
@@ -133,8 +119,21 @@ getLinkToHost = (hostName) ->
   url = getOpsaUri() + '/#/logsearchpql?search=' + encodedQuery + '"&start=' + getOneHourAgoTS() + '&end=' + now + '&selectedTimeRange=ONE_HOUR'
   return url
 progressCallback = ()->
-
+handleAnomRes = (anomHandler, anomRes, userRes) ->
+  anoms = anomHandler.parseRes(anomRes, userRes)
+  if (anoms.length == 0)
+    userRes.reply 'No data found for host: ' + getRequestedHost(userRes) + "\n"
+  getMetricsAndReply = (anom)->
+    clonedAnom = JSON.parse(JSON.stringify(anom))
+    return () ->
+      anomHandler.getMetrics(clonedAnom).then ((resultRes) ->
+        clonedAnom.text += "*Breached Metrics:* " + getLabels(resultRes)
+        userRes.reply clonedAnom.text
+      )
+  for anom in anoms
+    (getMetricsAndReply(anom))()
 now = new Date().getTime()
+registeredListeners = {}
 ########################################################
 #                   Anomalies API                      #
 ########################################################
@@ -262,28 +261,20 @@ AnomHandler::getMetrics = (anom) ->
 ########################################################
 #                   Controllers                        #
 ########################################################
-handleAnomRes = (anomHandler, anomRes, userRes) ->
-  anoms = anomHandler.parseRes(anomRes, userRes)
-  if (anoms.length == 0)
-    userRes.reply 'No data found for host: ' + getRequestedHost(userRes) + "\n"
-  getMetricsAndReply = (anom)->
-    clonedAnom = JSON.parse(JSON.stringify(anom))
-    return () ->
-      anomHandler.getMetrics(clonedAnom).then ((resultRes) ->
-        clonedAnom.text += "*Breached Metrics:* " + getLabels(resultRes)
-        userRes.reply clonedAnom.text
-      )
-  for anom in anoms
-    (getMetricsAndReply(anom))()
+
 module.exports = (robot) ->
-  robot.respond /display anomalies for (.*):?:\s*(.*)/i, (userRes) ->
+  exp = /display anomalies for (.*):?:\s*(.*)/i
+  if (registeredListeners[exp])
+    return
+  else
+    registeredListeners[exp] = 1
+  robot.respond exp, (userRes) ->
     requestp = requestp.bind this
     sess = new OpsaSession()
     sess.login(userRes).then ((res) ->
       anomHandler = new AnomHandler(res.body, sess.sData.sId)
       anomHandler.invokeAPI().then ((anomRes) ->
         handleAnomRes(anomHandler, anomRes, userRes)
-        ongoing = false
         return
       )
     )

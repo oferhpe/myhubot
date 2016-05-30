@@ -118,9 +118,6 @@ getLinkToHost = (hostName) ->
   url = getOpsaUri() + '/#/logsearchpql?search=' + encodedQuery + '"&start=' + getOneHourAgoTS() + '&end=' + now + '&selectedTimeRange=ONE_HOUR'
   return url
 progressCallback = ()->
-
-now = new Date().getTime()
-registeredListeners = {}
 RegistrationHandler = ()->
   @registeredListeners = {}
   @register = (robot, exp, callback) ->
@@ -130,9 +127,12 @@ RegistrationHandler = ()->
       @registeredListeners[exp] = 1
     robot.respond exp, callback
   return
-hubotRouter = new RegistrationHandler()
+########################################################
+#                  General  Variables                  #
+########################################################
 pleaseWaitMsg = 'Please wait...'
-
+now = new Date().getTime()
+hubotRouter = new RegistrationHandler()
 ########################################################
 #                   Anomalies API                      #
 ########################################################
@@ -258,23 +258,9 @@ AnomAPI::requestMetrices = (anom) ->
     mUrl = AnomAPI::getMetricsUrl(anom, descRes)
     requestp({url: mUrl, jar: sJar, method: 'POST', headers: sHeaders})
   )
-replyWithMetrics = (anomAPI, anomRes, userRes) ->
-  anoms = anomAPI.parseRes(anomRes, userRes)
-  if (anoms.length == 0)
-    userRes.reply 'No data found for host: ' + getRequestedHost(userRes) + "\n"
-  getMetricsAndReply = (anom)->
-    clonedAnom = JSON.parse(JSON.stringify(anom))
-    return () ->
-      anomAPI.requestMetrices(clonedAnom).then ((resultRes) ->
-        clonedAnom.text += "*Breached Metrics:* " + getLabels(resultRes)
-        userRes.reply clonedAnom.text
-      )
-  for anom in anoms
-    (getMetricsAndReply(anom))()
 ########################################################
 #                   Controllers                        #
 ########################################################
-
 module.exports = (robot) ->
   invokeAnomaliesAPI = (userRes) ->
     requestp = requestp.bind this
@@ -285,8 +271,19 @@ module.exports = (robot) ->
       jSessionId = opsaSessHandler.sData.sId
       anomAPI = new AnomAPI(xsrfToken, jSessionId)
       anomAPI.requestPrimaryData(userRes).then ((anomRes) ->
-        replyWithMetrics(anomAPI, anomRes, userRes))
+        anoms = anomAPI.parseRes(anomRes, userRes)
+        if (anoms.length == 0)
+          userRes.reply 'No data found for host: ' + getRequestedHost(userRes) + "\n"
+        for anom in anoms
+          (((anom)->
+            clonedAnom = JSON.parse(JSON.stringify(anom))
+            return () ->
+              anomAPI.requestMetrices(clonedAnom).then ((resultRes) ->
+                clonedAnom.text += "*Breached Metrics:* " + getLabels(resultRes)
+                userRes.reply clonedAnom.text
+              ))(anom))()
       )
+    )
   exp = /display anomalies for (.*):?:\s*(.*)/i
   hubotRouter.register robot, exp, invokeAnomaliesAPI
 

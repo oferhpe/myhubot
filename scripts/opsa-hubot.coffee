@@ -97,10 +97,13 @@ getLabels = (resultResponse) ->
       for childProp in val
         labelCount++
         for labelText in childProp.metricLabels
-          labelText = labelText.replace(/&#x[0-9]+;/g, '')
+          labelText = labelText.replace(/&#x[0-9]+(.);/g, ',')
           if (!uniqueLabels[labelText])
             uniqueLabels[labelText] = 1
-            labels += labelText + "\n>"
+            newLabel = labelText.replaceAll(",,", "")
+            if(newLabel.lastIndexOf(",") == newLabel.length - 1)
+              newLabel = newLabel.substring(0, newLabel.length - 1)
+            labels += newLabel + "\n>"
   labels.replace(",", "")
   if (labelCount > 1)
     labels = "\n>" + labels

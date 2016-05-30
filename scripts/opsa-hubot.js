@@ -129,7 +129,7 @@
     return res.match[1];
   };
   getLabels = function (resultResponse) {
-    var childProp, i, j, labelCount, labelText, labels, len, len1, prop, ref, resJson, uniqueLabels, val;
+    var childProp, i, j, labelCount, labelText, labels, len, len1, newLabel, prop, ref, resJson, uniqueLabels, val;
     resJson = JSON.parse(resultResponse.body);
     labels = "";
     labelCount = 0;
@@ -143,10 +143,14 @@
           ref = childProp.metricLabels;
           for (j = 0, len1 = ref.length; j < len1; j++) {
             labelText = ref[j];
-            labelText = labelText.replace(/&#x[0-9]+;/g, '');
+            labelText = labelText.replace(/&#x[0-9]+(.);/g, ',');
             if (!uniqueLabels[labelText]) {
               uniqueLabels[labelText] = 1;
-              labels += labelText + "\n>";
+              newLabel = labelText.replaceAll(",,", "");
+              if (newLabel.lastIndexOf(",") === newLabel.length - 1) {
+                newLabel = newLabel.substring(0, newLabel.length - 1);
+              }
+              labels += newLabel + "\n>";
             }
           }
         }

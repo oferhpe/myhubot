@@ -239,6 +239,11 @@ UBUNTU
 HUBOT_SLACK_TOKEN=xxx NODE_TLS_REJECT_UNAUTHORIZED=0 bin/hubot --adapter slack
 HUBOT_SLACK_TOKEN=xxx HUBOT_LOG_LEVEL=debug PORT=5003 NODE_TLS_REJECT_UNAUTHORIZED=0 bin/hubot --adapter slack
 
+CENTOS
+**********
+HUBOT_SLACK_TOKEN=xxxxxxx-yyyyyyyyyy-zzzzzzzzzzz NODE_TLS_REJECT_UNAUTHORIZED=0 PORT=5017 PATH=node_modules/hubot/node_modules:/home/ofer/myhubot:node_modules/hubot:node_modules/hubot/bin:node_modules/:node_modules/.bin:node_modules/hubot/node_modules/.bin:$PATH HUBOT_LOG_LEVEL=debug NODE_PATH=$NODE_PATH:./node_modules:./scripts node bin/run-hubot.js --adapter slack
+
+
 DEBUGGING:
 ***********
 In order for the JetBrains debugger to work, below 2 coffee script lines of code need to be added at the beginning of the files in the following 2 paths:

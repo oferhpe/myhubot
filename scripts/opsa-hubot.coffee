@@ -131,6 +131,7 @@ RegistrationHandler = ()->
     robot.respond exp, callback
   return
 hubotRouter = new RegistrationHandler()
+pleaseWaitMsg = 'Please wait...'
 
 ########################################################
 #                   Anomalies API                      #
@@ -278,7 +279,7 @@ module.exports = (robot) ->
   invokeAnomaliesAPI = (userRes) ->
     requestp = requestp.bind this
     opsaSessHandler = new OpsaSessionHandler()
-    userRes.reply 'Please wait...'
+    userRes.reply pleaseWaitMsg
     opsaSessHandler.login().then ((res) ->
       xsrfToken = res.body
       jSessionId = opsaSessHandler.sData.sId

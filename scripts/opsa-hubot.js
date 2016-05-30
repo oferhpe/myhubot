@@ -129,11 +129,19 @@
     return res.match[1];
   };
   getLabels = function (resultResponse) {
-    var childProp, i, j, labelCount, labelText, labels, len, len1, newLabel, prop, ref, resJson, uniqueLabels, val;
+    var childProp, getNewLabel, i, j, labelCount, labelText, labels, len, len1, prop, ref, resJson, uniqueLabels, val;
     resJson = JSON.parse(resultResponse.body);
     labels = "";
     labelCount = 0;
     uniqueLabels = {};
+    getNewLabel = function (labelText) {
+      var newLabel;
+      newLabel = labelText.replaceAll(",,", "");
+      if (newLabel.lastIndexOf(",") === newLabel.length - 1) {
+        newLabel = newLabel.substring(0, newLabel.length - 1);
+      }
+      return newLabel;
+    };
     for (prop in resJson) {
       val = resJson[prop];
       if (prop !== "anomaly_result") {
@@ -146,11 +154,7 @@
             labelText = labelText.replace(/&#x[0-9]+(.);/g, ',');
             if (!uniqueLabels[labelText]) {
               uniqueLabels[labelText] = 1;
-              newLabel = labelText.replaceAll(",,", "");
-              if (newLabel.lastIndexOf(",") === newLabel.length - 1) {
-                newLabel = newLabel.substring(0, newLabel.length - 1);
-              }
-              labels += newLabel + "\n>";
+              labels += getNewLabel(labelText) + "\n>";
             }
           }
         }
@@ -254,7 +258,7 @@
     }
   };
   AnomAPI.prototype.parseRes = function (res, requestedHost, requestedAnomalyType) {
-    var anomalies, body, collection, collectionGroup, collectionGroupId, collectionId, collections, columnIdx, extractInfoFromRawProps, extractSingleAnomalyData, modifyOutput, propNames, row, rowIdx, singleAnomaly, table, tableIdx, tableRows;
+    var anomalies, body, collection, collectionGroup, collectionGroupId, collectionId, collections, extractAnomaliesFromTable, extractInfoFromRawProps, extractSingleAnomalyData, extractedAnoms, modifyPropText, okToDisplay, propNames, table, tableIdx, toSkipAnomaly, toSkipProperty;
     body = res.body;
     anomalies = new Array();
     collections = JSON.parse(body);
@@ -282,19 +286,9 @@
       }
       return props;
     };
-    modifyOutput = function (propName, propVal, extractedInfo) {
+    modifyPropText = function (propName, propVal, extractedInfo) {
       var jsonValue, str, val;
       switch (propName) {
-        case "Status":
-          if (propVal === "Inactive") {
-            return null;
-          }
-          break;
-        case "Inactive time":
-        case "First breach":
-        case "Breaches timestamps":
-        case "Rules":
-          return null;
         case "Active time":
           propName = "Trigger Time";
           propVal = new Date(Number(propVal));
@@ -318,39 +312,64 @@
         propVal: propVal
       };
     };
+    toSkipProperty = function (propName, extractedInfo) {
+      if (propName === "Inactive time" || propName === "First breach" || propName === "Breaches timestamps" || propName === "Rules") {
+        return true;
+      }
+      if (propName === "Entity" && extractedInfo.anomalyType === "service") {
+        return true;
+      }
+    };
+    okToDisplay = function (display, origPropName, origPropVal, extractedInfo) {
+      return display === false && origPropName === "Entity" && (origPropVal === requestedHost || requestedHost === "*") && (requestedAnomalyType === extractedInfo.anomalyType);
+    };
+    toSkipAnomaly = function (propName, propVal) {
+      return propName === "Status" && propVal !== "active";
+    };
     extractSingleAnomalyData = function (anomalyRawData) {
-      var anomalyPropertiesAsText, colIdx, display, extractedInfo, hostName, modifiedProps, origPropName, origPropVal, propName, propVal;
+      var anomAttr, anomalyPropertiesAsText, colIdx, curHost, mProps, ok2Display, origPropName, origPropVal;
       anomalyPropertiesAsText = "";
-      display = false;
-      extractedInfo = {};
-      extractedInfo.anomalyPropertiesText = "";
+      ok2Display = false;
+      anomAttr = {};
+      anomAttr.anomalyPropertiesText = "";
       for (colIdx in anomalyRawData) {
         origPropName = propNames[colIdx];
         origPropVal = anomalyRawData[colIdx].displayValue;
-        extractedInfo = extractInfoFromRawProps(extractedInfo, origPropName, anomalyRawData[colIdx]);
-        modifiedProps = modifyOutput(origPropName, origPropVal, extractedInfo);
-        if (!modifiedProps) {
-          continue;
-        }
-        propName = modifiedProps.propName;
-        propVal = modifiedProps.propVal;
-        if (propName === "Status" && propVal !== "active") {
+        anomAttr = extractInfoFromRawProps(anomAttr, origPropName, anomalyRawData[colIdx]);
+        mProps = modifyPropText(origPropName, origPropVal, anomAttr);
+        if (toSkipAnomaly(mProps.propName, mProps.propVal)) {
           return null;
         }
-        if (display === false && origPropName === "Entity" && (origPropVal === requestedHost || requestedHost === "*") && (requestedAnomalyType === extractedInfo.anomalyType)) {
-          display = true;
-          hostName = extractedInfo.rawEntity;
+        if (okToDisplay(ok2Display, origPropName, origPropVal, anomAttr)) {
+          ok2Display = true;
         }
-        if (propName === "Entity" && extractedInfo.anomalyType === "service") {
+        if (toSkipProperty(mProps.propName, anomAttr)) {
           continue;
         }
-        anomalyPropertiesAsText += "*" + propName + ":* " + propVal + "\n";
+        anomalyPropertiesAsText += "*" + mProps.propName + ":* " + mProps.propVal + "\n";
       }
-      if (!display) {
+      if (!ok2Display) {
         return null;
       }
-      extractedInfo.text = "\n*Displaying anomalies for " + requestedAnomalyType + ":* " + hostName + "\n>>>" + anomalyPropertiesAsText;
-      return extractedInfo;
+      curHost = anomAttr.rawEntity;
+      anomAttr.text = "\n*Displaying anomalies for " + requestedAnomalyType + ":* " + curHost + "\n>>>" + anomalyPropertiesAsText;
+      return anomAttr;
+    };
+    extractAnomaliesFromTable = function () {
+      var columnIdx, row, rowIdx, singleAnomaly, tableAnomalies, tableRows;
+      tableAnomalies = new Array();
+      for (columnIdx in table.columnNames) {
+        propNames.push(table.columnNames[columnIdx].columnTitle);
+      }
+      tableRows = table.tableDataWithDrill;
+      for (rowIdx in tableRows) {
+        row = tableRows[rowIdx];
+        singleAnomaly = extractSingleAnomalyData(row);
+        if (singleAnomaly) {
+          tableAnomalies.push(singleAnomaly);
+        }
+      }
+      return tableAnomalies;
     };
     for (collectionGroupId in collections) {
       collectionGroup = collections[collectionGroupId];
@@ -359,17 +378,8 @@
         for (tableIdx in collection) {
           table = collection[tableIdx];
           propNames = new Array();
-          for (columnIdx in table.columnNames) {
-            propNames.push(table.columnNames[columnIdx].columnTitle);
-          }
-          tableRows = table.tableDataWithDrill;
-          for (rowIdx in tableRows) {
-            row = tableRows[rowIdx];
-            singleAnomaly = extractSingleAnomalyData(row);
-            if (singleAnomaly) {
-              anomalies.push(singleAnomaly);
-            }
-          }
+          extractedAnoms = extractAnomaliesFromTable(table);
+          anomalies = anomalies.concat(extractedAnoms);
         }
       }
     }

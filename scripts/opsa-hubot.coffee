@@ -92,6 +92,11 @@ getLabels = (resultResponse) ->
   labels = ""
   labelCount = 0
   uniqueLabels = {}
+  getNewLabel = (labelText)->
+    newLabel = labelText.replaceAll(",,", "")
+    if(newLabel.lastIndexOf(",") == newLabel.length - 1)
+      newLabel = newLabel.substring(0, newLabel.length - 1)
+    return newLabel
   for prop,val of resJson
     if prop != "anomaly_result"
       for childProp in val
@@ -100,10 +105,7 @@ getLabels = (resultResponse) ->
           labelText = labelText.replace(/&#x[0-9]+(.);/g, ',')
           if (!uniqueLabels[labelText])
             uniqueLabels[labelText] = 1
-            newLabel = labelText.replaceAll(",,", "")
-            if(newLabel.lastIndexOf(",") == newLabel.length - 1)
-              newLabel = newLabel.substring(0, newLabel.length - 1)
-            labels += newLabel + "\n>"
+            labels += getNewLabel(labelText) + "\n>"
   labels.replace(",", "")
   if (labelCount > 1)
     labels = "\n>" + labels
@@ -192,13 +194,8 @@ AnomAPI::parseRes = (res, requestedHost, requestedAnomalyType) ->
         if (propContainer.drillPQL.startsWith("service"))
           props.anomalyType = "service"
     return props
-  modifyOutput = (propName, propVal, extractedInfo)->
+  modifyPropText = (propName, propVal, extractedInfo)->
     switch propName
-      when "Status"
-        if propVal == "Inactive"
-          return null
-      when "Inactive time", "First breach","Breaches timestamps","Rules"
-        return null
       when "Active time"
         propName = "Trigger Time"
         propVal = new Date(Number(propVal))
@@ -216,33 +213,48 @@ AnomAPI::parseRes = (res, requestedHost, requestedAnomalyType) ->
       propName,
       propVal
     }
+  toSkipProperty = (propName, extractedInfo) ->
+    if propName in ["Inactive time", "First breach", "Breaches timestamps", "Rules"]
+      return true
+    if propName == "Entity" && extractedInfo.anomalyType == "service"
+      return true
+  okToDisplay = (display, origPropName, origPropVal, extractedInfo) ->
+    display == false && origPropName == "Entity" && (origPropVal == requestedHost || requestedHost == "*") && ( requestedAnomalyType == extractedInfo.anomalyType)
+  toSkipAnomaly = (propName, propVal) ->
+    propName == "Status" && propVal != "active"
   extractSingleAnomalyData = (anomalyRawData) ->
     anomalyPropertiesAsText = ""
-    display = false;
-    extractedInfo = {}
-    extractedInfo.anomalyPropertiesText = ""
+    ok2Display = false;
+    anomAttr = {}
+    anomAttr.anomalyPropertiesText = ""
     for colIdx of anomalyRawData
       origPropName = propNames[colIdx]
       origPropVal = anomalyRawData[colIdx].displayValue
-      #      drillPQL = anomalyRawData[colIdx].displayValue
-      extractedInfo = extractInfoFromRawProps(extractedInfo, origPropName, anomalyRawData[colIdx])
-      modifiedProps = modifyOutput(origPropName, origPropVal, extractedInfo)
-      if (!modifiedProps)
-        continue
-      propName = modifiedProps.propName
-      propVal = modifiedProps.propVal
-      if propName == "Status" && propVal != "active"
+      anomAttr = extractInfoFromRawProps(anomAttr, origPropName, anomalyRawData[colIdx])
+      mProps = modifyPropText(origPropName, origPropVal, anomAttr)
+      if toSkipAnomaly(mProps.propName, mProps.propVal)
         return null
-      if display == false && origPropName == "Entity" && (origPropVal == requestedHost || requestedHost == "*") && ( requestedAnomalyType == extractedInfo.anomalyType)
-        display = true
-        hostName = extractedInfo.rawEntity
-      if propName == "Entity" && extractedInfo.anomalyType == "service"
+      if okToDisplay(ok2Display, origPropName, origPropVal, anomAttr)
+        ok2Display = true
+      if toSkipProperty(mProps.propName, anomAttr)
         continue
-      anomalyPropertiesAsText += "*" + propName + ":* " + propVal + "\n"
-    if (!display)
+      anomalyPropertiesAsText += "*" + mProps.propName + ":* " + mProps.propVal + "\n"
+    if (!ok2Display)
       return null
-    extractedInfo.text = "\n*Displaying anomalies for " + requestedAnomalyType + ":* " + hostName + "\n>>>" + anomalyPropertiesAsText
-    return extractedInfo
+    curHost = anomAttr.rawEntity
+    anomAttr.text = "\n*Displaying anomalies for " + requestedAnomalyType + ":* " + curHost + "\n>>>" + anomalyPropertiesAsText
+    return anomAttr
+  extractAnomaliesFromTable = ->
+    tableAnomalies = new Array()
+    for columnIdx of table.columnNames
+      propNames.push table.columnNames[columnIdx].columnTitle
+    tableRows = table.tableDataWithDrill
+    for rowIdx of tableRows
+      row = tableRows[rowIdx]
+      singleAnomaly = extractSingleAnomalyData(row)
+      if (singleAnomaly)
+        tableAnomalies.push(singleAnomaly)
+    return tableAnomalies
   for collectionGroupId of collections
     collectionGroup = collections[collectionGroupId]
     for collectionId of collectionGroup
@@ -250,14 +262,8 @@ AnomAPI::parseRes = (res, requestedHost, requestedAnomalyType) ->
       for tableIdx of collection
         table = collection[tableIdx]
         propNames = new Array()
-        for columnIdx of table.columnNames
-          propNames.push table.columnNames[columnIdx].columnTitle
-        tableRows = table.tableDataWithDrill
-        for rowIdx of tableRows
-          row = tableRows[rowIdx]
-          singleAnomaly = extractSingleAnomalyData(row)
-          if (singleAnomaly)
-            anomalies.push(singleAnomaly)
+        extractedAnoms = extractAnomaliesFromTable(table)
+        anomalies = anomalies.concat(extractedAnoms)
   return anomalies
 AnomAPI::requestMetrices = (anom) ->
   sJar = @sJar

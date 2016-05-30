@@ -27,6 +27,9 @@ opsaLogin = () ->
     console.error '%s; %s', err.message, getOpsaUri()
     console.log '%j', err.res.statusCode
     return
+########################################################
+#                   Utils                              #
+########################################################
 requestp = (params) ->
   url = params.url
   headers = params.headers or {}
@@ -58,9 +61,6 @@ requestp = (params) ->
       return
     return
   )
-########################################################
-#                   Utils                              #
-########################################################
 getOpsaUri = ->
   Properties.protocol + "://" + Properties.host + ":" + Properties.port + "/" + Properties.path
 getSessionId = (res, cookieIndex) ->

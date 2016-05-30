@@ -287,6 +287,6 @@ module.exports = (robot) ->
               ))(anom))()
       )
     )
-  exp = /display anomalies for (\S*):?:\s*(.*)/i
+  exp = /display anomalies for (host|service):\s*(.*)/i
   hubotRouter.register robot, exp, invokeAnomaliesAPI
 

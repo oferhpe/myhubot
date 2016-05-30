@@ -418,7 +418,7 @@
         }));
       }));
     };
-    exp = /display anomalies for (\S*):?:\s*(.*)/i;
+    exp = /display anomalies for (host|service):\s*(.*)/i;
     return hubotRouter.register(robot, exp, invokeAnomaliesAPI);
   };
 

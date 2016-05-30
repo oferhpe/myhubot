@@ -89,7 +89,7 @@ createJar = (res, url, cookieIndex) ->
   jar = generateJar(jSessionId, url)
   return jar
 getRequestedHost = (res) ->
-  res.match[2].replace(/^https?\:\/\//i, "");
+  res.match[2].replace(/^https?\:\/\//i, "").replace("//", "");
 getRequestedAnomaliyType = (res) ->
   res.match[1]
 getLabels = (resultResponse) ->
@@ -127,6 +127,10 @@ RegistrationHandler = ()->
       @registeredListeners[exp] = 1
     robot.respond exp, callback
   return
+getNoDataText = (userRes) ->
+  'No data found for host: ' + getRequestedHost(userRes) + "\n"
+getMetricesText = (resultRes) ->
+  "*Breached Metrics:* " + getLabels(resultRes)
 ########################################################
 #                  General  Variables                  #
 ########################################################
@@ -162,11 +166,10 @@ AnomAPI::getMetricsUrl = (parsedInfo, descResponse) ->
   for desc of descArray
     if (descArray[desc].label.startsWith("Breaches for Anomaly"))
       return getOpsaUri() + "/rest/getQueryResult?aqlQuery=" + encodeURIComponent(descArray[desc].aql) + "&endTime=" + endTime + '&granularity=0&pageIndex=1&paramsMap={"$starttime":"' + new Date(parsedInfo.triggerTime) + '","$limit":"1000","$interval":7200,"$offset":0,"$N":5,"$pctile":10,"$timeoffset":0,"$starttimeoffset":0,"$endtimeoffset":0,"$timeout":0,"$drill_dest":"","$drill_label":"","$drill_value":"","$drill_type":"","$problemtime":' + parsedInfo.triggerTime + ',"$aggregate_playback_flag":null}&queryType=anomalyInstance&startTime=' + parsedInfo.triggerTime + '&timeZoneOffset=-180&timeout=10'
-AnomAPI::parseRes = (res, userRes) ->
+AnomAPI::parseRes = (res, requestedHost, requestedAnomalyType) ->
   body = res.body
   anomalies = new Array()
   collections = JSON.parse(body)
-  requestedHost = getRequestedHost(userRes)
   extractInfoFromRawProps = (props, propName, propContainer)->
     propVal = propContainer.displayValue
     switch propName
@@ -213,18 +216,18 @@ AnomAPI::parseRes = (res, userRes) ->
     extractedInfo = {}
     extractedInfo.anomalyPropertiesText = ""
     for colIdx of anomalyRawData
-      propName = propNames[colIdx]
-      propVal = anomalyRawData[colIdx].displayValue
+      origPropName = propNames[colIdx]
+      origPropVal = anomalyRawData[colIdx].displayValue
       #      drillPQL = anomalyRawData[colIdx].displayValue
-      extractedInfo = extractInfoFromRawProps(extractedInfo, propName, anomalyRawData[colIdx])
-      modifiedProps = modifyOutput(propName, propVal, extractedInfo)
+      extractedInfo = extractInfoFromRawProps(extractedInfo, origPropName, anomalyRawData[colIdx])
+      modifiedProps = modifyOutput(origPropName, origPropVal, extractedInfo)
       if (!modifiedProps)
         continue
       propName = modifiedProps.propName
       propVal = modifiedProps.propVal
       if propName == "Status" && propVal != "active"
         return null
-      if display == false && propName == "Entity" && (propVal == requestedHost || requestedHost == "*") && ( getRequestedAnomaliyType(userRes) == extractedInfo.anomalyType)
+      if display == false && origPropName == "Entity" && (origPropVal == requestedHost || requestedHost == "*") && ( requestedAnomalyType == extractedInfo.anomalyType)
         display = true
         hostName = extractedInfo.rawEntity
       if propName == "Entity" && extractedInfo.anomalyType == "service"
@@ -232,7 +235,7 @@ AnomAPI::parseRes = (res, userRes) ->
       anomalyPropertiesAsText += "*" + propName + ":* " + propVal + "\n"
     if (!display)
       return null
-    extractedInfo.text = "\n*Displaying anomalies for " + getRequestedAnomaliyType(userRes) + ":* " + hostName + "\n>>>" + anomalyPropertiesAsText
+    extractedInfo.text = "\n*Displaying anomalies for " + requestedAnomalyType + ":* " + hostName + "\n>>>" + anomalyPropertiesAsText
     return extractedInfo
   for collectionGroupId of collections
     collectionGroup = collections[collectionGroupId]
@@ -270,20 +273,20 @@ module.exports = (robot) ->
       xsrfToken = res.body
       jSessionId = opsaSessHandler.sData.sId
       anomAPI = new AnomAPI(xsrfToken, jSessionId)
-      anomAPI.requestPrimaryData(userRes).then ((anomRes) ->
-        anoms = anomAPI.parseRes(anomRes, userRes)
+      anomAPI.requestPrimaryData().then ((anomRes) ->
+        anoms = anomAPI.parseRes(anomRes, getRequestedHost(userRes), getRequestedAnomaliyType(userRes))
         if (anoms.length == 0)
-          userRes.reply 'No data found for host: ' + getRequestedHost(userRes) + "\n"
+          userRes.reply getNoDataText(userRes)
         for anom in anoms
           (((anom)->
             clonedAnom = JSON.parse(JSON.stringify(anom))
             return () ->
               anomAPI.requestMetrices(clonedAnom).then ((resultRes) ->
-                clonedAnom.text += "*Breached Metrics:* " + getLabels(resultRes)
+                clonedAnom.text += getMetricesText(resultRes)
                 userRes.reply clonedAnom.text
               ))(anom))()
       )
     )
-  exp = /display anomalies for (.*):?:\s*(.*)/i
+  exp = /display anomalies for (\S*):?:\s*(.*)/i
   hubotRouter.register robot, exp, invokeAnomaliesAPI
 

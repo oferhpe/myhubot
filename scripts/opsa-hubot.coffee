@@ -4,25 +4,22 @@ require('request-debug')(request);
 ########################################################
 #                   Opsa API                           #
 ########################################################
-OpsaSessionHandler = () ->
-OpsaSessionHandler::login = () ->
+opsaLogin = () ->
   opsaUri = getOpsaUri();
   seqUrl = opsaUri + "/j_security_check"
   xsrfUrl = opsaUri + "/rest/getXSRFToken"
   loginForm =
     j_username: Properties.user
     j_password: Properties.password
-  @sData = {}
-  localSessionData = @sData
   requestp({url: opsaUri}).then ((res) ->
     jar4SecurityRequest = createJar(res, seqUrl, 1)
     requestp({url: seqUrl, jar: jar4SecurityRequest, method: 'POST', form: loginForm}).then ((res) ->
       requestp({url: opsaUri, jar: jar4SecurityRequest}).then ((apiSessionResponse) ->
-        localSessionData.sId = getSessionId(apiSessionResponse, 0)
+        jSessionId = getSessionId(apiSessionResponse, 0)
         jar4XSRFRequest = createJar(apiSessionResponse, xsrfUrl)
         requestp({url: xsrfUrl, jar: jar4XSRFRequest}).then((res) ->
           new Promise((resolve, reject) ->
-            resolve {xsrfToken: res.body, jSessionId: localSessionData.sId}
+            resolve {xsrfToken: res.body, jSessionId: jSessionId}
           ))
       )
     )
@@ -30,8 +27,6 @@ OpsaSessionHandler::login = () ->
     console.error '%s; %s', err.message, getOpsaUri()
     console.log '%j', err.res.statusCode
     return
-OpsaSessionHandler::getSessId = () ->
-  @.sData.sId
 requestp = (params) ->
   url = params.url
   headers = params.headers or {}
@@ -278,9 +273,8 @@ AnomAPI::parseAnoms = (userRes, anomRes) ->
 ########################################################
 module.exports = (robot) ->
   invokeAnomaliesAPI = (userRes) ->
-    opsaSess = new OpsaSessionHandler()
     userRes.reply pleaseWaitMsg
-    opsaSess.login().then ((res) ->
+    opsaLogin().then ((res) ->
       anomAPI = new AnomAPI(res.xsrfToken, res.jSessionId)
       anomAPI.requestPrimaryData().then ((anomRes) ->
         anoms = anomAPI.parseAnoms(userRes, anomRes)

@@ -4,12 +4,7 @@ require('request-debug')(request);
 ########################################################
 #                   Opsa API                           #
 ########################################################
-OpsaSessionHandler = (xsrfToken, jSessionId) ->
-  if xsrfToken
-    @xsrfToken = xsrfToken.slice 1, -1
-  if jSessionId
-    @jSessionId = jSessionId
-  return
+OpsaSessionHandler = () ->
 OpsaSessionHandler::login = () ->
   opsaUri = getOpsaUri();
   seqUrl = opsaUri + "/j_security_check"
@@ -25,13 +20,18 @@ OpsaSessionHandler::login = () ->
       requestp({url: opsaUri, jar: jar4SecurityRequest}).then ((apiSessionResponse) ->
         localSessionData.sId = getSessionId(apiSessionResponse, 0)
         jar4XSRFRequest = createJar(apiSessionResponse, xsrfUrl)
-        requestp({url: xsrfUrl, jar: jar4XSRFRequest})
+        requestp({url: xsrfUrl, jar: jar4XSRFRequest}).then((res) ->
+          new Promise((resolve, reject) ->
+            resolve {xsrfToken: res.body, jSessionId: localSessionData.sId}
+          ))
       )
     )
   ), (err) ->
     console.error '%s; %s', err.message, getOpsaUri()
     console.log '%j', err.res.statusCode
     return
+OpsaSessionHandler::getSessId = () ->
+  @.sData.sId
 requestp = (params) ->
   url = params.url
   headers = params.headers or {}
@@ -131,6 +131,11 @@ getNoDataText = (userRes) ->
   'No data found for host: ' + getRequestedHost(userRes) + "\n"
 getMetricesText = (resultRes) ->
   "*Breached Metrics:* " + getLabels(resultRes)
+handleNoData = (anoms, userRes) ->
+  if (anoms.length == 0)
+    userRes.reply getNoDataText(userRes)
+deepClone = (obj) ->
+  JSON.parse(JSON.stringify(obj))
 ########################################################
 #                  General  Variables                  #
 ########################################################
@@ -141,7 +146,10 @@ hubotRouter = new RegistrationHandler()
 #                   Anomalies API                      #
 ########################################################
 AnomAPI = (xsrfToken, jSessionId) ->
-  OpsaSessionHandler.call this, xsrfToken, jSessionId
+  if xsrfToken
+    @xsrfToken = xsrfToken.slice 1, -1
+  if jSessionId
+    @jSessionId = jSessionId
   return
 AnomAPI::constructor = AnomAPI
 AnomAPI::requestPrimaryData = () ->
@@ -261,29 +269,29 @@ AnomAPI::requestMetrices = (anom) ->
     mUrl = AnomAPI::getMetricsUrl(anom, descRes)
     requestp({url: mUrl, jar: sJar, method: 'POST', headers: sHeaders})
   )
+AnomAPI::parseAnoms = (userRes, anomRes) ->
+  requestedHost = getRequestedHost(userRes)
+  requestedAnomalyType = getRequestedAnomaliyType(userRes)
+  @parseRes(anomRes, requestedHost, requestedAnomalyType)
 ########################################################
 #                   Controllers                        #
 ########################################################
 module.exports = (robot) ->
   invokeAnomaliesAPI = (userRes) ->
-    requestp = requestp.bind this
-    opsaSessHandler = new OpsaSessionHandler()
+    opsaSess = new OpsaSessionHandler()
     userRes.reply pleaseWaitMsg
-    opsaSessHandler.login().then ((res) ->
-      xsrfToken = res.body
-      jSessionId = opsaSessHandler.sData.sId
-      anomAPI = new AnomAPI(xsrfToken, jSessionId)
+    opsaSess.login().then ((res) ->
+      anomAPI = new AnomAPI(res.xsrfToken, res.jSessionId)
       anomAPI.requestPrimaryData().then ((anomRes) ->
-        anoms = anomAPI.parseRes(anomRes, getRequestedHost(userRes), getRequestedAnomaliyType(userRes))
-        if (anoms.length == 0)
-          userRes.reply getNoDataText(userRes)
+        anoms = anomAPI.parseAnoms(userRes, anomRes)
+        handleNoData(anoms, userRes)
         for anom in anoms
           (((anom)->
-            clonedAnom = JSON.parse(JSON.stringify(anom))
+            cAnom = deepClone(anom)
             return () ->
-              anomAPI.requestMetrices(clonedAnom).then ((resultRes) ->
-                clonedAnom.text += getMetricesText(resultRes)
-                userRes.reply clonedAnom.text
+              anomAPI.requestMetrices(cAnom).then ((resultRes) ->
+                cAnom.text += getMetricesText(resultRes)
+                userRes.reply cAnom.text
               ))(anom))()
       )
     )

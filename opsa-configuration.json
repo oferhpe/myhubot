@@ -1,8 +1,8 @@
 {
-  user: "opsa"
-  password: "opsa"
-  port: "8080"
-  path: "opsa"
+  user: "xxxx"
+  password: "xxxx"
+  port: "1234"
+  path: "xxxx"
   protocol: "http"
-  host: "156.152.57.22"
+  host: "111.222.333.444"
 }

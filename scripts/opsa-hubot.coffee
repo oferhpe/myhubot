@@ -92,11 +92,13 @@ collectAttrs = (resJson, attrGroup, attrCategory, attrTypeFieldName, attrTypeReg
   attrsCount = 0
   uniqueAttrs = {}
   getNewAttr = (labelText)->
-    newLabel = labelText.replaceAll(",,", "")
-    if(newLabel.lastIndexOf(",") == newLabel.length - 1)
-      newLabel = newLabel.substring(0, newLabel.length - 1)
+    newAttr = labelText.replaceAll(",,", "")
+    if(newAttr.lastIndexOf(",") == newAttr.length - 1)
+      newAttr = newAttr.substring(0, newAttr.length - 1)
+    if (newAttr == "")
+      return
     attrsCount++
-    return "• " + newLabel
+    return "• " + newAttr
   for childProp in resJson[attrGroup]
     for attr in childProp[attrCategory]
       if typeof attr == "string"
@@ -153,7 +155,7 @@ getDynamicAttrsText = (resultResponse) ->
   if logsText != ""
     dynamicAttrsText += "*Logs:* " + eol + logsText + eol
   if metricesText != ""
-    dynamicAttrsText += "*Breached Metrices:* " + eol + metricesText + eol
+    dynamicAttrsText += "*Breached Metrices:* " + eol + metricesText
   return dynamicAttrsText
 
 handleNoData = (anoms, userRes) ->
@@ -319,7 +321,7 @@ module.exports = (robot) ->
             return () ->
               anomAPI.requestMetrices(cAnom).then ((resultRes) ->
                 cAnom.text += getDynamicAttrsText(resultRes)
-                userRes.reply cAnom.text
+                userRes.reply cAnom.text + "\n"
               ))(anom))()
       )
     )

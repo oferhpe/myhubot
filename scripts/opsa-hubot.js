@@ -134,13 +134,16 @@
     attrsCount = 0;
     uniqueAttrs = {};
     getNewAttr = function (labelText) {
-      var newLabel;
-      newLabel = labelText.replaceAll(",,", "");
-      if (newLabel.lastIndexOf(",") === newLabel.length - 1) {
-        newLabel = newLabel.substring(0, newLabel.length - 1);
+      var newAttr;
+      newAttr = labelText.replaceAll(",,", "");
+      if (newAttr.lastIndexOf(",") === newAttr.length - 1) {
+        newAttr = newAttr.substring(0, newAttr.length - 1);
+      }
+      if (newAttr === "") {
+        return;
       }
       attrsCount++;
-      return "• " + newLabel;
+      return "• " + newAttr;
     };
     ref = resJson[attrGroup];
     for (i = 0, len = ref.length; i < len; i++) {
@@ -223,7 +226,7 @@
       dynamicAttrsText += "*Logs:* " + eol + logsText + eol;
     }
     if (metricesText !== "") {
-      dynamicAttrsText += "*Breached Metrices:* " + eol + metricesText + eol;
+      dynamicAttrsText += "*Breached Metrices:* " + eol + metricesText;
     }
     return dynamicAttrsText;
   };
@@ -463,7 +466,7 @@
               return function () {
                 return anomAPI.requestMetrices(cAnom).then((function (resultRes) {
                   cAnom.text += getDynamicAttrsText(resultRes);
-                  return userRes.reply(cAnom.text);
+                  return userRes.reply(cAnom.text + "\n");
                 }));
               };
             })(anom))());

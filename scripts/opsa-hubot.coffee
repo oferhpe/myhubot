@@ -69,10 +69,10 @@ getSessionId = (res, cookieIndex) ->
     return
   firstCookie = cookie[cookieIndex]
   jSessionId = firstCookie.split("=")[1].split(";")[0]
+  return jSessionId
 generateJar = (jSessionId, url) ->
   jar = request.jar()
   cookie = request.cookie('JSESSIONID=' + jSessionId)
-  console.log "setting cookie: " + cookie
   jar.setCookie cookie, url, (error, cookie) ->
   return jar
 createJar = (res, url, cookieIndex) ->
@@ -87,29 +87,32 @@ getRequestedHost = (res) ->
   res.match[2].replace(/^https?\:\/\//i, "").replace("//", "");
 getRequestedAnomaliyType = (res) ->
   res.match[1]
-getLabels = (resultResponse) ->
-  resJson = JSON.parse(resultResponse.body)
-  labels = ""
-  labelCount = 0
-  uniqueLabels = {}
-  getNewLabel = (labelText)->
+collectAttrs = (resJson, attrGroup, attrCategory, attrTypeFieldName, attrTypeRegex, attrValueField) ->
+  attrs = ""
+  attrsCount = 0
+  uniqueAttrs = {}
+  getNewAttr = (labelText)->
     newLabel = labelText.replaceAll(",,", "")
     if(newLabel.lastIndexOf(",") == newLabel.length - 1)
       newLabel = newLabel.substring(0, newLabel.length - 1)
-    return newLabel
-  for prop,val of resJson
-    if prop != "anomaly_result"
-      for childProp in val
-        labelCount++
-        for labelText in childProp.metricLabels
-          labelText = labelText.replace(/&#x[0-9]+(.);/g, ',')
-          if (!uniqueLabels[labelText])
-            uniqueLabels[labelText] = 1
-            labels += getNewLabel(labelText) + "\n>"
-  labels.replace(",", "")
-  if (labelCount > 1)
-    labels = "\n>" + labels
-  return labels
+    attrsCount++
+    return "• " + newLabel
+  for childProp in resJson[attrGroup]
+    for attr in childProp[attrCategory]
+      if typeof attr == "string"
+        attr = attr.replace(/&#x[0-9]+(.);/g, ',')
+        if (!uniqueAttrs[attr])
+          uniqueAttrs[attr] = 1
+          attrs += getNewAttr(attr) + "\n>"
+      else
+        if attr[attrTypeFieldName].match(attrTypeRegex)
+          attrVal = attr[attrValueField]
+          attrVal = attrVal.replace(/&#x[0-9]+(.);/g, ',')
+          if (!uniqueAttrs[attrVal])
+            uniqueAttrs[attrVal] = 1
+            attrs += getNewAttr(attrVal) + "\n>"
+  attrs.replace(",", "")
+  return attrs
 getOneHourAgoTS = () ->
   ONE_HOUR = 60 * 60 * 1000;
   return now - ONE_HOUR
@@ -129,8 +132,30 @@ RegistrationHandler = ()->
   return
 getNoDataText = (userRes) ->
   'No data found for host: ' + getRequestedHost(userRes) + "\n"
-getMetricesText = (resultRes) ->
-  "*Breached Metrics:* " + getLabels(resultRes)
+getDynamicAttrsText = (resultResponse) ->
+  resJson = JSON.parse(resultResponse.body)
+  dynamicAttrsText = ""
+  metricesText = ""
+  eventsText = ""
+  logsText = ""
+  eol = "\n>";
+  for attrGroup of resJson
+    switch attrGroup
+      when "anomaly_result"
+        continue
+      when "opsa_collection_message"
+        eventsText += collectAttrs(resJson, attrGroup, "processedResult", "breachType", /^event/, "drillLabel")
+        logsText += collectAttrs(resJson, attrGroup, "processedResult", "breachType", /log/gi, "drillLabel")
+      else
+        metricesText += collectAttrs(resJson, attrGroup, "metricLabels")
+  if eventsText != ""
+    dynamicAttrsText += "*Events:* " + eol + eventsText + eol
+  if logsText != ""
+    dynamicAttrsText += "*Logs:* " + eol + logsText + eol
+  if metricesText != ""
+    dynamicAttrsText += "*Breached Metrices:* " + eol + metricesText + eol
+  return dynamicAttrsText
+
 handleNoData = (anoms, userRes) ->
   if (anoms.length == 0)
     userRes.reply getNoDataText(userRes)
@@ -244,7 +269,7 @@ AnomAPI::parseRes = (res, requestedHost, requestedAnomalyType) ->
     curHost = anomAttr.rawEntity
     anomAttr.text = "\n*Displaying anomalies for " + requestedAnomalyType + ":* " + curHost + "\n>>>" + anomalyPropertiesAsText
     return anomAttr
-  extractAnomaliesFromTable = ->
+  extractAnomaliesFromTable = (table)->
     tableAnomalies = new Array()
     for columnIdx of table.columnNames
       propNames.push table.columnNames[columnIdx].columnTitle
@@ -293,7 +318,7 @@ module.exports = (robot) ->
             cAnom = deepClone(anom)
             return () ->
               anomAPI.requestMetrices(cAnom).then ((resultRes) ->
-                cAnom.text += getMetricesText(resultRes)
+                cAnom.text += getDynamicAttrsText(resultRes)
                 userRes.reply cAnom.text
               ))(anom))()
       )

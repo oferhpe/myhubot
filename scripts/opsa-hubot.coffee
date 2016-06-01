@@ -96,7 +96,7 @@ collectAttrs = (resJson, attrGroup, attrCategory, attrTypeFieldName, attrTypeReg
     if(newAttr.lastIndexOf(",") == newAttr.length - 1)
       newAttr = newAttr.substring(0, newAttr.length - 1)
     if (newAttr == "")
-      return
+      return ""
     attrsCount++
     return "\n>• " + newAttr
   for childProp in resJson[attrGroup]

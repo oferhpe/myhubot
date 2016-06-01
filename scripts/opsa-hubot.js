@@ -140,7 +140,7 @@
         newAttr = newAttr.substring(0, newAttr.length - 1);
       }
       if (newAttr === "") {
-        return;
+        return "";
       }
       attrsCount++;
       return "\n>• " + newAttr;

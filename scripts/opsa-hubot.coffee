@@ -98,21 +98,21 @@ collectAttrs = (resJson, attrGroup, attrCategory, attrTypeFieldName, attrTypeReg
     if (newAttr == "")
       return
     attrsCount++
-    return "• " + newAttr
+    return "\n>• " + newAttr
   for childProp in resJson[attrGroup]
     for attr in childProp[attrCategory]
       if typeof attr == "string"
         attr = attr.replace(/&#x[0-9]+(.);/g, ',')
         if (!uniqueAttrs[attr])
           uniqueAttrs[attr] = 1
-          attrs += getNewAttr(attr) + "\n>"
+          attrs += getNewAttr(attr)
       else
         if attr[attrTypeFieldName].match(attrTypeRegex)
           attrVal = attr[attrValueField]
           attrVal = attrVal.replace(/&#x[0-9]+(.);/g, ',')
           if (!uniqueAttrs[attrVal])
             uniqueAttrs[attrVal] = 1
-            attrs += getNewAttr(attrVal) + "\n>"
+            attrs += getNewAttr(attrVal)
   attrs.replace(",", "")
   return attrs
 getOneHourAgoTS = () ->
@@ -140,7 +140,7 @@ getDynamicAttrsText = (resultResponse) ->
   metricesText = ""
   eventsText = ""
   logsText = ""
-  eol = "\n>";
+  eol = "\n";
   for attrGroup of resJson
     switch attrGroup
       when "anomaly_result"
@@ -151,11 +151,11 @@ getDynamicAttrsText = (resultResponse) ->
       else
         metricesText += collectAttrs(resJson, attrGroup, "metricLabels")
   if eventsText != ""
-    dynamicAttrsText += "*Events:* " + eol + eventsText + eol
+    dynamicAttrsText += "*Events:* " + eventsText + eol
   if logsText != ""
-    dynamicAttrsText += "*Logs:* " + eol + logsText + eol
+    dynamicAttrsText += "*Logs:* " + logsText + eol
   if metricesText != ""
-    dynamicAttrsText += "*Breached Metrices:* " + eol + metricesText
+    dynamicAttrsText += "*Breached Metrices:* " + metricesText + eol
   return dynamicAttrsText
 
 handleNoData = (anoms, userRes) ->

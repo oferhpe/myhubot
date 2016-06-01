@@ -143,7 +143,7 @@
         return;
       }
       attrsCount++;
-      return "• " + newAttr;
+      return "\n>• " + newAttr;
     };
     ref = resJson[attrGroup];
     for (i = 0, len = ref.length; i < len; i++) {
@@ -155,7 +155,7 @@
           attr = attr.replace(/&#x[0-9]+(.);/g, ',');
           if (!uniqueAttrs[attr]) {
             uniqueAttrs[attr] = 1;
-            attrs += getNewAttr(attr) + "\n>";
+            attrs += getNewAttr(attr);
           }
         } else {
           if (attr[attrTypeFieldName].match(attrTypeRegex)) {
@@ -163,7 +163,7 @@
             attrVal = attrVal.replace(/&#x[0-9]+(.);/g, ',');
             if (!uniqueAttrs[attrVal]) {
               uniqueAttrs[attrVal] = 1;
-              attrs += getNewAttr(attrVal) + "\n>";
+              attrs += getNewAttr(attrVal);
             }
           }
         }
@@ -206,7 +206,7 @@
     metricesText = "";
     eventsText = "";
     logsText = "";
-    eol = "\n>";
+    eol = "\n";
     for (attrGroup in resJson) {
       switch (attrGroup) {
         case "anomaly_result":
@@ -220,13 +220,13 @@
       }
     }
     if (eventsText !== "") {
-      dynamicAttrsText += "*Events:* " + eol + eventsText + eol;
+      dynamicAttrsText += "*Events:* " + eventsText + eol;
     }
     if (logsText !== "") {
-      dynamicAttrsText += "*Logs:* " + eol + logsText + eol;
+      dynamicAttrsText += "*Logs:* " + logsText + eol;
     }
     if (metricesText !== "") {
-      dynamicAttrsText += "*Breached Metrices:* " + eol + metricesText;
+      dynamicAttrsText += "*Breached Metrices:* " + metricesText + eol;
     }
     return dynamicAttrsText;
   };

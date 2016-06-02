@@ -227,12 +227,9 @@ AnomAPI::parseRes = (res, requestedHost, requestedAnomalyType) ->
         propName = "Trigger Time"
         propVal = new Date(Number(propVal))
       when "Severity"
-        str = ''
         jsonValue = JSON.parse(propVal)
-        for val of jsonValue
-          str += ',' + jsonValue[val]
-        str = str.replace ',', ''
-        propVal = str
+        idx = Object.keys(jsonValue).length
+        propVal = jsonValue[Object.keys(jsonValue)[idx - 1]]
       when "Entity"
         if (extractedInfo.anomalyType == "host")
           propVal = getLinkToHost(propVal);

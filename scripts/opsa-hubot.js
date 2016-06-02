@@ -321,20 +321,16 @@
       return props;
     };
     modifyPropText = function (propName, propVal, extractedInfo) {
-      var jsonValue, str, val;
+      var idx, jsonValue;
       switch (propName) {
         case "Active time":
           propName = "Trigger Time";
           propVal = new Date(Number(propVal));
           break;
         case "Severity":
-          str = '';
           jsonValue = JSON.parse(propVal);
-          for (val in jsonValue) {
-            str += ',' + jsonValue[val];
-          }
-          str = str.replace(',', '');
-          propVal = str;
+          idx = Object.keys(jsonValue).length;
+          propVal = jsonValue[Object.keys(jsonValue)[idx - 1]];
           break;
         case "Entity":
           if (extractedInfo.anomalyType === "host") {

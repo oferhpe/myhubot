@@ -1,8 +1,0 @@
-#!/bin/sh
-
-set -e
-
-npm install
-export PATH="node_modules/.bin:node_modules/hubot/node_modules/.bin:$PATH"
-export HUBOT_SLACK_TOKEN="xoxb-37798132887-O5unk5My1mOuEmP3Q8eEjzOQ"
-export NODE_TLS_REJECT_UNAUTHORIZED="0"

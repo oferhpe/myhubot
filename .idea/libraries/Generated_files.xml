@@ -2074,9 +2074,9 @@
       <root url="file://$PROJECT_DIR$/node_modules/hubot-scripts/src/scripts/revx-quotes.js" />
       <root url="file://$PROJECT_DIR$/node_modules/hubot-scripts/src/scripts/robot-memes.js" />
       <root url="file://$PROJECT_DIR$/node_modules/hubot-scripts/src/scripts/redis-brain.js" />
-      <root url="file://$PROJECT_DIR$/scripts/opsa-hubot.js" />
+      <root url="file://$PROJECT_DIR$/src/opsa-hubot.js" />
       <root url="file://$PROJECT_DIR$/scripts/example.js" />
-      <root url="file://$PROJECT_DIR$/scripts/opsa-api-properties.js" />
+      <root url="file://$PROJECT_DIR$/lib/opsa-api-properties.js" />
       <root url="file://$PROJECT_DIR$/node_modules/hubot-scripts/src/scripts/rsstodolist.js" />
       <root url="file://$PROJECT_DIR$/node_modules/hubot-scripts/src/scripts/yoda-quotes.js" />
       <root url="file://$PROJECT_DIR$/node_modules/hubot-scripts/src/scripts/whereisbill.js" />

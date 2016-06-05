@@ -1,6 +1,6 @@
 request = require('request')
 Properties = require('opsa-api-properties.coffee')
-require('request-debug')(request);
+#require('request-debug')(request);
 ########################################################
 #                   Opsa API                           #
 ########################################################

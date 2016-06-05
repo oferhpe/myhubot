@@ -6,8 +6,9 @@ A hubot implementation to interact with OpsA Rest Services
 How to deploy and run:
 **********************
 1. Login to slack and install Hubot bot plugin. Write down the slack token
-1. Clone this repository and run npm install.
-2. Substituting [port-number] and [slack-token] with desired port number and token from previous step, run in terminal
+2. Clone this repository and run npm install.
+3. Run file watchers to create javascript files from coffeescript.
+3. Run the following command in terminal, Substituting [port-number] and [slack-token] with desired port number and token from previous step.
 HUBOT_SLACK_TOKEN=[slack-token] NODE_TLS_REJECT_UNAUTHORIZED=0 PORT=[port-number] PATH=node_modules/hubot/node_modules:/home/ofer/myhubot: node_modules/hubot :node_modules/hubot/bin:node_modules/:node_modules/.bin:node_modules/hubot/node_modules/.bin:src:$PATH HUBOT_LOG_LEVEL=debug NODE_PATH=$NODE_PATH:./node_modules:./scripts:./src:./lib node bin/run-hubot.js --adapter slack
 
 Tips

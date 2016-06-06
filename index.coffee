@@ -1,7 +1,7 @@
 fs = require 'fs'
 path = require 'path'
 require('coffee-script/register');
-#require('./node_modules/hubot/bin/hubot.js');
+require('./node_modules/hubot/bin/hubot.js');
 module.exports = (robot, scripts) ->
   scriptsPath = path.resolve(__dirname, 'src')
   if fs.existsSync scriptsPath

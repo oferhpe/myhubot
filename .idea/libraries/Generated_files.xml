@@ -10,8 +10,10 @@
         <item url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/json-ref.js" />
         <item url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/examples/calendar.js" />
         <item url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/examples/interfaces.js" />
+        <item url="file://$PROJECT_DIR$/lib/utils.js" />
         <item url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/examples/address.js" />
         <item url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/examples/card.js" />
+        <item url="file://$PROJECT_DIR$/lib/opsa.js" />
         <item url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/examples/geo.js" />
         <item url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/links.js" />
         <item url="file://$PROJECT_DIR$/node_modules/json-schema/draft-02/hyper-schema.js" />
@@ -2113,8 +2115,10 @@
       <root url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/json-ref.js" />
       <root url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/examples/calendar.js" />
       <root url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/examples/interfaces.js" />
+      <root url="file://$PROJECT_DIR$/lib/utils.js" />
       <root url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/examples/address.js" />
       <root url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/examples/card.js" />
+      <root url="file://$PROJECT_DIR$/lib/opsa.js" />
       <root url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/examples/geo.js" />
       <root url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/links.js" />
       <root url="file://$PROJECT_DIR$/node_modules/json-schema/draft-02/hyper-schema.js" />

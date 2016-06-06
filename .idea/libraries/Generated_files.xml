@@ -7,6 +7,7 @@
         <item url="file://$PROJECT_DIR$/node_modules/json-schema/draft-04/hyper-schema.js" />
         <item url="file://$PROJECT_DIR$/node_modules/json-schema/draft-04/links.js" />
         <item url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/hyper-schema.js" />
+        <item url="file://$PROJECT_DIR$/lib/AnomAPI.js" />
         <item url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/json-ref.js" />
         <item url="file://$PROJECT_DIR$/lib/AnomAPI.js" />
         <item url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/examples/calendar.js" />
@@ -2108,11 +2109,16 @@
       <root url="file://$PROJECT_DIR$/node_modules/hubot-scripts/src/scripts/whereisbill.js" />
       <root url="file://$PROJECT_DIR$/node_modules/hubot-scripts/src/scripts/yoda-quotes.js" />
       <root url="file://$PROJECT_DIR$/node_modules/hubot-scripts/src/scripts/rsstodolist.js" />
+      <root url="file://$PROJECT_DIR$/lib/utils.js" />
+      <root url="file://$PROJECT_DIR$/lib/opsa.js" />
+      <root url="file://$PROJECT_DIR$/lib/opsa-api-properties.js" />
+      <root url="file://$PROJECT_DIR$/src/opsa-hubot.js" />
       <root url="file://$PROJECT_DIR$/node_modules/json-schema/draft-04/schema.js" />
       <root url="file://$PROJECT_DIR$/node_modules/coffee-script/CNAME.js" />
       <root url="file://$PROJECT_DIR$/node_modules/json-schema/draft-04/hyper-schema.js" />
       <root url="file://$PROJECT_DIR$/node_modules/json-schema/draft-04/links.js" />
       <root url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/hyper-schema.js" />
+      <root url="file://$PROJECT_DIR$/lib/AnomAPI.js" />
       <root url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/json-ref.js" />
       <root url="file://$PROJECT_DIR$/lib/AnomAPI.js" />
       <root url="file://$PROJECT_DIR$/node_modules/json-schema/draft-03/examples/calendar.js" />

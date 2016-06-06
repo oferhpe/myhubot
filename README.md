@@ -3,7 +3,7 @@ Hubot for OpsA
 
 A hubot implementation to interact with OpsA Rest Services
 
-How to deploy and run:
+Deployment and Launching:
 **********************
 1. Login to slack and install Hubot bot plugin. Write down the slack token
 2. Clone this repository and run npm install.
